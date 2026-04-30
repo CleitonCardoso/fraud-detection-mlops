@@ -1,0 +1,135 @@
+{
+  "title": "Fraud Detection — MLOps",
+  "uid": "fraud-mlops",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Request Rate (req/min)",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(fraud_api_requests_total{status=\"ok\"}[1m])) * 60",
+          "legendFormat": "req/min"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Fraud Rate (last 5m)",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "avg_over_time(fraud_api_fraud_score_sum[5m]) / avg_over_time(fraud_api_fraud_score_count[5m])",
+          "legendFormat": "avg score"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.3}]}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Model AUC",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "fraud_api_model_auc",
+          "legendFormat": "AUC"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "thresholds": {"steps": [{"color": "red", "value": 0}, {"color": "yellow", "value": 0.85}, {"color": "green", "value": 0.95}]}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Error Rate",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(fraud_api_requests_total{status=\"error\"}[5m])) / sum(rate(fraud_api_requests_total[5m]))",
+          "legendFormat": "error %"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "unit": "percentunit", "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 0.01}, {"color": "red", "value": 0.05}]}}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Prediction Latency (p99)",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum(rate(fraud_api_prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.50, sum(rate(fraud_api_prediction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Fraud Score Distribution",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(rate(fraud_api_fraud_score_bucket[5m])) by (le))",
+          "legendFormat": "p95 score"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.50, sum(rate(fraud_api_fraud_score_bucket[5m])) by (le))",
+          "legendFormat": "p50 score"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Data Drift PSI",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "fraud_api_drift_psi",
+          "legendFormat": "{{feature}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {"steps": [{"color": "green", "value": 0}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.2}]},
+          "custom": {"thresholdsStyle": {"mode": "line"}}
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Agent Latency (p99)",
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum(rate(fraud_api_agent_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99 agent"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    }
+  ]
+}
