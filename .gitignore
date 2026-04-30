@@ -13,9 +13,10 @@ htmlcov/
 coverage.xml
 
 # Data (tracked by DVC)
-data/raw/
+data/raw/creditcard.csv
 data/processed/
 !data/raw/.gitignore
+!data/raw/*.dvc
 !data/processed/.gitignore
 
 # Models

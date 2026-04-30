@@ -1,0 +1,4 @@
+# DVC manages this folder — do not commit data files
+/creditcard.csv
+!.gitignore
+!*.dvc
