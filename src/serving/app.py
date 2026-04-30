@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from src.monitoring.metrics import (
     agent_latency,
+    drift_psi_gauge,
     fraud_score,
     model_auc_gauge,
     prediction_latency,
@@ -34,11 +35,36 @@ def _load_model():
     try:
         uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
         mlflow.set_tracking_uri(uri)
+        run = mlflow.search_runs(
+            experiment_names=[os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection")],
+            filter_string="tags.model_name = 'fraud_detector_rf'",
+            order_by=["metrics.auc DESC"],
+            max_results=1,
+        )
+        if not run.empty:
+            auc = run.iloc[0].get("metrics.auc", 0.0)
+            model_auc_gauge.set(auc)
+            logger.info("Model AUC from registry: %.4f", auc)
         _model = mlflow.sklearn.load_model("models:/fraud_detector_rf@Production")
         logger.info("Modelo carregado do MLflow Registry")
     except Exception as e:
         logger.warning("Modelo não disponível no Registry: %s — usando fallback", e)
         _model = None
+
+    _seed_drift_metrics()
+
+
+def _seed_drift_metrics():
+    """Seed drift PSI gauges with last known values from config or defaults."""
+    import yaml
+    from pathlib import Path
+    try:
+        cfg = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())
+        features = cfg.get("drift", {}).get("features_to_monitor", ["Amount_scaled", "V14", "Hour"])
+    except Exception:
+        features = ["Amount_scaled", "V14", "Hour"]
+    for feature in features:
+        drift_psi_gauge.labels(feature=feature).set(0.0)
 
 
 @asynccontextmanager
@@ -54,7 +80,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.mount("/metrics", make_asgi_app())
+app.mount("/metrics/", make_asgi_app())
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────

@@ -1,0 +1,61 @@
+groups:
+  - name: fraud_detection
+    rules:
+      - alert: ModelAUCDegraded
+        expr: fraud_model_auc < 0.85
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model AUC below threshold"
+          description: "Production model AUC is {{ $value | humanize }} — below 0.85 threshold. Trigger champion-challenger evaluation."
+
+      - alert: DataDriftWarning
+        expr: fraud_drift_psi > 0.1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data drift PSI warning on {{ $labels.feature }}"
+          description: "Feature {{ $labels.feature }} PSI={{ $value | humanize }} exceeded 0.1 threshold."
+
+      - alert: DataDriftCritical
+        expr: fraud_drift_psi > 0.2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical drift on {{ $labels.feature }} — retrain required"
+          description: "Feature {{ $labels.feature }} PSI={{ $value | humanize }} exceeded 0.2. Trigger automated retraining pipeline."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(fraud_api_requests_total{status="error"}[5m])) /
+          sum(rate(fraud_api_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API error rate above 5%"
+          description: "Error rate is {{ $value | humanizePercentage }}."
+
+      - alert: HighPredictionLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(fraud_prediction_latency_seconds_bucket[5m])) by (le)
+          ) > 1.0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prediction latency p99 above 1 second"
+          description: "p99 latency is {{ $value | humanizeDuration }}."
+
+      - alert: APIDown
+        expr: up{job="fraud-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fraud Detection API is down"
+          description: "The fraud detection API has been unreachable for more than 1 minute."

@@ -2,6 +2,7 @@ drift:
   psi_warning_threshold: 0.1
   psi_retrain_threshold: 0.2
   check_schedule: "0 2 * * *"   # daily at 02:00
+  features_to_monitor: ["Amount_scaled", "V14", "Hour", "Amount_log1p"]
 
 retraining:
   schedule: "0 2 * * 1"         # every Monday at 02:00
