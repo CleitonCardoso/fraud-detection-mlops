@@ -1,0 +1,67 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/serving/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      - mlflow
+    volumes:
+      - ./data:/app/data
+      - ./mlruns:/app/mlruns
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.11.1
+    ports:
+      - "5000:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow_data/mlflow.db --default-artifact-root /mlartifacts
+    volumes:
+      - mlflow_db:/mlflow_data
+      - mlflow_artifacts:/mlartifacts
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  langfuse:
+    image: langfuse/langfuse:2
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://langfuse:langfuse@langfuse_db:5432/langfuse
+      - NEXTAUTH_SECRET=change_me_in_production
+      - NEXTAUTH_URL=http://localhost:3001
+      - SALT=change_me_in_production
+    depends_on:
+      - langfuse_db
+
+  langfuse_db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=langfuse
+      - POSTGRES_DB=langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+
+volumes:
+  mlflow_db:
+  mlflow_artifacts:
+  grafana_data:
+  langfuse_db_data:

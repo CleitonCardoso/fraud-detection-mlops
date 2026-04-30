@@ -1,0 +1,40 @@
+stages:
+  features:
+    cmd: python -c "
+      import pandas as pd;
+      from src.features.feature_engineering import compute_features;
+      from src.features.feature_store import upsert_features;
+      df = compute_features(pd.read_csv('data/raw/creditcard.csv'));
+      upsert_features(df);
+      df.to_parquet('data/processed/features.parquet', index=False)
+      "
+    deps:
+      - data/raw/creditcard.csv
+      - src/features/feature_engineering.py
+      - src/features/feature_store.py
+    outs:
+      - data/processed/features.parquet
+      - data/processed/feature_store.parquet
+
+  train:
+    cmd: python src/models/train.py
+    deps:
+      - data/processed/features.parquet
+      - src/models/baseline.py
+      - src/models/mlp.py
+      - src/models/train.py
+      - configs/model_config.yaml
+    params:
+      - configs/model_config.yaml:
+          - random_forest
+          - logistic_regression
+          - mlp
+
+  drift:
+    cmd: python src/monitoring/drift.py
+    deps:
+      - data/processed/feature_store.parquet
+      - src/monitoring/drift.py
+      - configs/monitoring_config.yaml
+    outs:
+      - data/processed/drift_report.html

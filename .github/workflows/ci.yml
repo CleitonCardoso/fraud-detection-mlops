@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[ml,serving,agent,monitoring,security,dev]"
+
+      - name: Lint
+        run: ruff check src/ tests/ evaluation/
+
+      - name: Type check
+        run: mypy src/ --ignore-missing-imports
+
+      - name: Security scan
+        run: bandit -r src/ -c pyproject.toml
+
+      - name: Tests
+        run: pytest tests/ -x --cov=src --cov-report=xml --cov-fail-under=60
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  build:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t fraud-api:${{ github.sha }} src/serving/
+
+      - name: Push to registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker tag fraud-api:${{ github.sha }} ghcr.io/${{ github.repository }}/fraud-api:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/fraud-api:${{ github.sha }}

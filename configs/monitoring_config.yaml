@@ -1,0 +1,12 @@
+drift:
+  psi_warning_threshold: 0.1
+  psi_retrain_threshold: 0.2
+  check_schedule: "0 2 * * *"   # daily at 02:00
+
+retraining:
+  schedule: "0 2 * * 1"         # every Monday at 02:00
+  champion_min_delta_auc: 0.005
+
+alerts:
+  grafana_webhook_url: "${GRAFANA_WEBHOOK_URL}"
+  notify_on: [psi_warning, psi_retrain, auc_degradation]

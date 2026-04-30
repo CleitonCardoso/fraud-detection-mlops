@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Uma transação de R$850 às 3h da manhã é suspeita?",
+    "expected_answer": "Sim. Transações em horário incomum (00h–05h) têm probabilidade três vezes maior de ser fraude. Combine com o score do modelo para confirmação."
+  },
+  {
+    "query": "O que significa um score de fraude de 0.97?",
+    "expected_answer": "Score de 0.97 indica altíssima probabilidade de fraude (97%). O threshold de decisão é 0.5 — qualquer valor acima classifica como fraude."
+  },
+  {
+    "query": "Qual é o AUC do modelo em produção?",
+    "expected_answer": "O modelo Random Forest atingiu AUC de 0.95 no conjunto de teste, indicando excelente capacidade de separar fraudes de transações legítimas."
+  },
+  {
+    "query": "O que é PSI e por que ele importa?",
+    "expected_answer": "PSI (Population Stability Index) mede o quanto a distribuição dos dados mudou em relação ao treino. PSI > 0.1 é warning, PSI > 0.2 dispara retreino automático."
+  },
+  {
+    "query": "O feature V14 tem algum significado especial?",
+    "expected_answer": "Sim. V14 menor que -5 combinado com valor alto é forte indicador de fraude card-not-present. É um dos top features do modelo."
+  },
+  {
+    "query": "O que acontece quando drift é detectado?",
+    "expected_answer": "PSI > 0.1 gera alerta no Grafana. PSI > 0.2 dispara retreino automático via pipeline DVC. O novo modelo passa por champion-challenger antes de ir a produção."
+  },
+  {
+    "query": "Como o modelo lida com o desbalanceamento de classes?",
+    "expected_answer": "Usando class_weight='balanced' no sklearn e pos_weight no PyTorch, que penaliza mais os erros nas fraudes (classe minoritária)."
+  },
+  {
+    "query": "O que é champion-challenger?",
+    "expected_answer": "É o processo de validação onde um novo modelo (challenger) só substitui o modelo em produção (champion) se superar seu AUC em pelo menos 0.5%."
+  },
+  {
+    "query": "Por que precision é diferente de recall?",
+    "expected_answer": "Precision mede quantas das transações classificadas como fraude eram de fato fraudes. Recall mede quantas fraudes reais foram detectadas. Recall é mais crítico aqui."
+  },
+  {
+    "query": "Os dados de treino contêm informações pessoais?",
+    "expected_answer": "Não. As features V1-V28 são componentes PCA dos dados originais — nenhuma informação identificável está presente, em conformidade com a LGPD."
+  },
+  {
+    "query": "Com que frequência o modelo é retreinado?",
+    "expected_answer": "Semanalmente por cron, ou imediatamente quando PSI > 0.2. O deploy de um novo modelo requer aprovação humana via GitHub Environment gate."
+  },
+  {
+    "query": "Qual o impacto financeiro de uma fraude não detectada?",
+    "expected_answer": "Depende do valor da transação. O sistema monitora 'valor em risco' no Grafana — soma do Amount de todas as transações classificadas como potencial fraude."
+  },
+  {
+    "query": "O que é o agente ReAct?",
+    "expected_answer": "É um agente LLM que raciocina em ciclos Thought-Action-Observation, usando três ferramentas: fraud_predictor (score do modelo), transaction_lookup (RAG) e drift_report (status do drift)."
+  },
+  {
+    "query": "Como funciona o RAG do sistema?",
+    "expected_answer": "A pergunta é convertida em embedding, comparada com chunks da base de conhecimento via FAISS, e os trechos mais relevantes são injetados no prompt do LLM como contexto."
+  },
+  {
+    "query": "O que é o feature Hour?",
+    "expected_answer": "Hour é a hora do dia derivada do campo Time (segundos desde a primeira transação). Varia de 0 a 23 e captura padrões de horário associados a fraudes."
+  },
+  {
+    "query": "Qual threshold de score classifica uma transação como fraude?",
+    "expected_answer": "O threshold padrão é 0.5. Scores acima de 0.5 são classificados como fraude. Em contextos de alto custo de falso negativo, o threshold pode ser ajustado para 0.3."
+  },
+  {
+    "query": "O sistema detecta PII no output?",
+    "expected_answer": "Sim. O OutputGuardrail usa Microsoft Presidio para detectar e anonimizar CPF, email, telefone e outras PII antes de retornar a resposta ao usuário."
+  },
+  {
+    "query": "O que acontece se o LLM receber um prompt de injection?",
+    "expected_answer": "O InputGuardrail detecta padrões como 'ignore previous instructions' e bloqueia o request com HTTP 400, logando o incidente para auditoria."
+  },
+  {
+    "query": "Qual a diferença entre staging e production?",
+    "expected_answer": "Todo merge em main faz deploy automático em staging. O deploy em production exige aprovação manual no GitHub Environment gate — é o human-in-the-loop do nosso pipeline."
+  },
+  {
+    "query": "O que o Langfuse monitora?",
+    "expected_answer": "Langfuse rastreia cada chamada do agente: tokens consumidos, latência total, quais tools foram chamadas, inputs e outputs — permitindo debug e otimização de custo do LLM."
+  }
+]

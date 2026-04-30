@@ -1,0 +1,20 @@
+random_forest:
+  n_estimators: 100
+  class_weight: balanced
+  random_state: 42
+
+logistic_regression:
+  max_iter: 1000
+  class_weight: balanced
+
+mlp:
+  epochs: 20
+  batch_size: 512
+  lr: 0.001
+  hidden_dims: [128, 64, 32]
+  dropout: 0.3
+
+training:
+  test_size: 0.2
+  random_state: 42
+  champion_min_delta_auc: 0.005

@@ -1,0 +1,157 @@
+"""Training pipeline with MLflow tracking and Model Registry."""
+import logging
+import os
+from pathlib import Path
+
+import mlflow
+import mlflow.sklearn
+import mlflow.pytorch
+import pandas as pd
+
+from src.features.feature_engineering import compute_features, split_features_target
+from src.features.feature_store import upsert_features
+from src.models.baseline import evaluate, get_splits, train_logistic_regression, train_random_forest
+
+try:
+    from src.models.mlp import predict_proba_mlp, train_mlp
+except ImportError:
+    train_mlp = None  # type: ignore[assignment]
+    predict_proba_mlp = None  # type: ignore[assignment]
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
+logger = logging.getLogger(__name__)
+
+REQUIRED_TAGS: dict[str, type] = {
+    "model_name": str,
+    "model_version": str,
+    "model_type": str,
+    "training_data_version": str,
+    "owner": str,
+    "risk_level": str,
+    "fairness_checked": str,
+    "git_sha": str,
+}
+
+
+def _get_git_sha() -> str:
+    import subprocess
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def _get_dvc_hash(path: str) -> str:
+    dvc_file = Path(path + ".dvc")
+    if dvc_file.exists():
+        import yaml
+        with open(dvc_file) as f:
+            meta = yaml.safe_load(f)
+        return meta.get("outs", [{}])[0].get("md5", "unknown")
+    return "unknown"
+
+
+def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
+    """Full training pipeline: load → features → train → log → register.
+
+    Args:
+        data_path: Path to raw CSV file.
+    """
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+    mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection"))
+
+    logger.info("Carregando dados de %s", data_path)
+    df_raw = pd.read_csv(data_path)
+    logger.info("Dataset: %d linhas, fraudes: %.2f%%", len(df_raw), df_raw["Class"].mean() * 100)
+
+    df = compute_features(df_raw)
+    upsert_features(df)
+
+    X, y = split_features_target(df)
+    X_train, X_test, y_train, y_test = get_splits(X, y)
+
+    git_sha = _get_git_sha()
+    dvc_hash = _get_dvc_hash(data_path)
+    owner = os.getenv("OWNER_EMAIL", "owner@example.com")
+
+    # ── Logistic Regression ──────────────────────────────────────────
+    with mlflow.start_run(run_name="logistic_regression"):
+        lr_model = train_logistic_regression(X_train, y_train)
+        y_proba = lr_model.predict_proba(X_test)[:, 1]
+        y_pred = (y_proba >= 0.5).astype(int)
+        metrics = evaluate(y_test, y_pred, y_proba)
+
+        mlflow.log_params({"model_type": "logistic_regression", "class_weight": "balanced", "max_iter": 1000})
+        mlflow.log_metrics(metrics)
+        mlflow.set_tags({
+            "model_name": "fraud_detector_lr",
+            "model_version": "1.0.0",
+            "model_type": "classification",
+            "training_data_version": dvc_hash,
+            "owner": owner,
+            "risk_level": "high",
+            "fairness_checked": "false",
+            "git_sha": git_sha,
+        })
+        mlflow.sklearn.log_model(lr_model, "model", registered_model_name="fraud_detector_lr")
+        logger.info("LR — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
+
+    # ── Random Forest ────────────────────────────────────────────────
+    with mlflow.start_run(run_name="random_forest"):
+        rf_model = train_random_forest(X_train, y_train)
+        y_proba = rf_model.predict_proba(X_test)[:, 1]
+        y_pred = (y_proba >= 0.5).astype(int)
+        metrics = evaluate(y_test, y_pred, y_proba)
+
+        mlflow.log_params({"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"})
+        mlflow.log_metrics(metrics)
+        mlflow.set_tags({
+            "model_name": "fraud_detector_rf",
+            "model_version": "1.0.0",
+            "model_type": "classification",
+            "training_data_version": dvc_hash,
+            "owner": owner,
+            "risk_level": "high",
+            "fairness_checked": "false",
+            "git_sha": git_sha,
+        })
+        mlflow.sklearn.log_model(rf_model, "model", registered_model_name="fraud_detector_rf")
+        logger.info("RF  — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
+
+    # ── PyTorch MLP ──────────────────────────────────────────────────
+    try:
+        if train_mlp is None:
+            raise ImportError("torch not available")
+        import numpy as np
+        with mlflow.start_run(run_name="mlp_pytorch"):
+            X_train_np = X_train.to_numpy(dtype="float32")
+            X_test_np = X_test.to_numpy(dtype="float32")
+            y_train_np = y_train.to_numpy(dtype="float32")
+
+            mlp_model = train_mlp(X_train_np, y_train_np)
+            y_proba_np = predict_proba_mlp(mlp_model, X_test_np)
+            y_pred_np = (y_proba_np >= 0.5).astype(int)
+            metrics = evaluate(y_test, pd.Series(y_pred_np), pd.Series(y_proba_np))
+
+            mlflow.log_params({"model_type": "mlp", "epochs": 20, "batch_size": 512, "lr": 1e-3, "hidden_dims": "[128,64,32]"})
+            mlflow.log_metrics(metrics)
+            mlflow.set_tags({
+                "model_name": "fraud_detector_mlp",
+                "model_version": "1.0.0",
+                "model_type": "classification",
+                "training_data_version": dvc_hash,
+                "owner": owner,
+                "risk_level": "high",
+                "fairness_checked": "false",
+                "git_sha": git_sha,
+            })
+            mlflow.pytorch.log_model(mlp_model, "model", registered_model_name="fraud_detector_mlp")
+            logger.info("MLP — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
+    except ImportError:
+        logger.warning("torch não instalado — MLP ignorado. Execute: pip install torch")
+
+    logger.info("Treino completo. Acesse o MLflow em %s", os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+
+
+if __name__ == "__main__":
+    run_training()
