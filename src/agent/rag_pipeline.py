@@ -1,9 +1,9 @@
 """RAG pipeline: FAISS vector store over fraud knowledge base."""
 import logging
+import os
 from pathlib import Path
 
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -27,20 +27,46 @@ FRAUD_KNOWLEDGE_BASE = [
     "Precision mede quantas das transações classificadas como fraude são realmente fraude.",
     "Recall mede quantas das fraudes reais foram detectadas — mais crítico do que precision neste domínio.",
     "F1-score é a média harmônica entre precision e recall, equilibrando os dois objetivos.",
+    "O threshold padrão de classificação é 0.5. Scores acima disso são marcados como fraude.",
+    "O sistema usa SHAP para explicar as predições, mostrando as features que mais contribuíram para cada decisão.",
+    "Retreino automático é disparado quando PSI > 0.2 em qualquer feature monitorada.",
+    "O deploy em produção requer aprovação humana via GitHub Environment gate — human-in-the-loop.",
+    "Langfuse monitora cada chamada do agente: tokens, latência, tools usadas, inputs e outputs.",
 ]
 
 
-def build_index() -> FAISS:
-    """Build and persist FAISS index from the fraud knowledge base.
+def _get_embeddings():
+    """Return embeddings backend: Ollama if available, else OpenAI."""
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    openai_key = os.getenv("OPENAI_API_KEY", "")
 
-    Returns:
-        FAISS vector store ready for similarity search.
-    """
+    try:
+        from langchain_ollama import OllamaEmbeddings
+        import urllib.request
+        urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
+        logger.info("Usando Ollama embeddings (nomic-embed-text)")
+        return OllamaEmbeddings(model="nomic-embed-text", base_url=ollama_url)
+    except Exception:
+        pass
+
+    if openai_key:
+        from langchain_openai import OpenAIEmbeddings
+        logger.info("Usando OpenAI embeddings")
+        return OpenAIEmbeddings(model="text-embedding-3-small")
+
+    raise RuntimeError(
+        "Nenhum backend de embeddings disponível. "
+        "Inicie o Ollama (ollama serve) ou configure OPENAI_API_KEY."
+    )
+
+
+def build_index() -> FAISS:
+    """Build and persist FAISS index from the fraud knowledge base."""
     splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
     docs = [Document(page_content=text) for text in FRAUD_KNOWLEDGE_BASE]
     chunks = splitter.split_documents(docs)
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    embeddings = _get_embeddings()
     store = FAISS.from_documents(chunks, embeddings)
 
     Path(INDEX_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -50,12 +76,8 @@ def build_index() -> FAISS:
 
 
 def load_index() -> FAISS:
-    """Load FAISS index from disk, building it if it does not exist.
-
-    Returns:
-        FAISS vector store.
-    """
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    """Load FAISS index from disk, building it if it does not exist."""
+    embeddings = _get_embeddings()
     if Path(INDEX_PATH).exists():
         logger.info("Carregando FAISS index de %s", INDEX_PATH)
         return FAISS.load_local(INDEX_PATH, embeddings, allow_dangerous_deserialization=True)
@@ -64,15 +86,7 @@ def load_index() -> FAISS:
 
 
 def retrieve(query: str, k: int = 3) -> list[str]:
-    """Retrieve top-k relevant chunks for a query.
-
-    Args:
-        query: User question or transaction description.
-        k: Number of chunks to retrieve.
-
-    Returns:
-        List of relevant text chunks.
-    """
+    """Retrieve top-k relevant chunks for a query."""
     store = load_index()
     docs = store.similarity_search(query, k=k)
     return [doc.page_content for doc in docs]

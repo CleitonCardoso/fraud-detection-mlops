@@ -4,8 +4,6 @@ import logging
 import os
 from pathlib import Path
 
-from langchain_openai import ChatOpenAI
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -27,51 +25,59 @@ Responda APENAS com JSON válido no formato:
 {{"precisao_tecnica": <1-5>, "clareza": <1-5>, "impacto_negocio": <1-5>, "justificativa": "<uma frase>"}}"""
 
 
-def judge_answer(question: str, answer: str, expected: str, llm: ChatOpenAI) -> dict:
-    """Evaluate a single Q&A pair using the LLM judge.
+def _get_judge_llm():
+    """Return LLM for judging: Ollama if available, else OpenAI."""
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    try:
+        from langchain_ollama import ChatOllama
+        import urllib.request
+        urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
+        model = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+        logger.info("LLM judge usando Ollama: %s", model)
+        return ChatOllama(model=model, base_url=ollama_url, temperature=0.0)
+    except Exception:
+        pass
 
-    Args:
-        question: The original question.
-        answer: The system's answer.
-        expected: The expected answer from the golden set.
-        llm: Configured ChatOpenAI instance.
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if openai_key:
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model="gpt-4o-mini", temperature=0.0, api_key=openai_key)
 
-    Returns:
-        Dictionary with scores for each criterion.
-    """
+    raise RuntimeError("Nenhum LLM disponível para o judge.")
+
+
+def judge_answer(question: str, answer: str, expected: str, llm) -> dict:
+    """Evaluate a single Q&A pair using the LLM judge."""
     prompt = JUDGE_PROMPT.format(question=question, answer=answer, expected=expected)
     response = llm.invoke(prompt)
+    content = response.content if hasattr(response, "content") else str(response)
     try:
-        return json.loads(response.content)
-    except json.JSONDecodeError:
+        # Extract JSON even if model adds extra text
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        return json.loads(content[start:end])
+    except (json.JSONDecodeError, ValueError):
         logger.warning("LLM judge retornou JSON inválido — usando zeros")
         return {"precisao_tecnica": 0, "clareza": 0, "impacto_negocio": 0, "justificativa": "parse error"}
 
 
 def run_llm_judge(golden_set_path: str = GOLDEN_SET_PATH) -> dict[str, float]:
-    """Run LLM-as-judge over the full golden set.
-
-    Args:
-        golden_set_path: Path to golden set JSON.
-
-    Returns:
-        Average scores per criterion across all golden set items.
-    """
+    """Run LLM-as-judge over the full golden set."""
     with open(golden_set_path) as f:
         golden_set = json.load(f)
 
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, api_key=os.getenv("OPENAI_API_KEY"))
-
+    llm = _get_judge_llm()
     from src.agent.react_agent import query as agent_query
 
     totals: dict[str, float] = {"precisao_tecnica": 0.0, "clareza": 0.0, "impacto_negocio": 0.0}
 
-    for item in golden_set:
+    for i, item in enumerate(golden_set, 1):
+        logger.info("[%d/%d] %s", i, len(golden_set), item["query"][:60])
         result = agent_query(item["query"])
         scores = judge_answer(item["query"], result["answer"], item["expected_answer"], llm)
         for k in totals:
             totals[k] += scores.get(k, 0)
-        logger.info("Query: %s | scores: %s", item["query"][:50], scores)
+        logger.info("scores: %s", scores)
 
     n = len(golden_set)
     averages = {k: round(v / n, 3) for k, v in totals.items()}
