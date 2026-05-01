@@ -27,6 +27,61 @@ data/
   golden_set/       golden_set.json (20 pares Q&A)
 ```
 
+## Setup numa Máquina Nova
+
+```bash
+# 1. Clonar
+git clone https://github.com/CleitonCardoso/fraud-detection-mlops.git
+cd fraud-detection-mlops
+
+# 2. Python (usar 3.11 ou 3.12 — PyTorch não suporta 3.13)
+python3.12 -m venv .venv && source .venv/bin/activate
+
+# 3. Dependências
+pip install -e ".[ml,serving,agent,monitoring,security,dev]"
+
+# 4. Copiar e preencher variáveis de ambiente
+cp .env.example .env   # editar com suas keys
+
+# 5. Dataset (requer conta Kaggle com token em ~/.kaggle/kaggle.json)
+make data              # baixa creditcard.csv via DVC/Kaggle
+
+# 6. Treinar modelo e registrar no MLflow
+mlflow server --host 0.0.0.0 --port 5000 &   # rodar MLflow localmente
+make train
+# Após o treino, promover RF para produção no MLflow UI (localhost:5000)
+# Models → fraud_detector_rf → Aliases → adicionar "Production"
+
+# 7. Subir infraestrutura
+docker compose up -d   # Prometheus, Grafana, Langfuse
+
+# 8. Iniciar API (com MLflow local)
+MLFLOW_TRACKING_URI=http://localhost:5000 PYTHONPATH=. \
+  uvicorn src.serving.app:app --host 0.0.0.0 --port 8000
+
+# 9. Ollama (para o agente e avaliações sem OpenAI)
+brew install ollama    # macOS
+ollama pull llama3.2:3b
+ollama pull nomic-embed-text
+ollama serve &
+
+# 10. Buildar FAISS index
+PYTHONPATH=. python3 -c "from src.agent.rag_pipeline import build_index; build_index()"
+```
+
+## Estado Atual (última sessão)
+
+- **Modelos treinados:** RF (`@Production`) e LR registrados no MLflow local (`mlruns/`)
+- **Dados:** `data/raw/creditcard.csv` rastreado pelo DVC (284.807 linhas)
+- **Feature store:** `data/processed/feature_store.parquet` gerado
+- **FAISS index:** `data/processed/faiss_index/` construído com nomic-embed-text
+- **Drift report:** `data/processed/drift_report.html` gerado com Evidently
+- **Testes:** 42 passando, 1 skip (torch), cobertura 70.7%
+- **Grafana:** provisioned com 11 painéis, 4 alertas (admin/datathon)
+- **Ollama:** `llama3.2:3b` + `nomic-embed-text` instalados localmente
+
+> ⚠️ `mlruns/` não está no git — numa máquina nova é preciso rodar `make train` novamente e promover o alias `@Production` no MLflow UI.
+
 ## Comandos Essenciais
 
 ```bash
