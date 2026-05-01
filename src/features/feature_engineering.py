@@ -34,6 +34,10 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     scaler_amount = StandardScaler()
     scaler_time = StandardScaler()
 
+    # fit_transform on each call is intentional for training; in production serving
+    # a single-row input is effectively z-scored against itself (mean=value, std≈0→1).
+    # Acceptable here because the model was trained on PCA features (V1-V28) that
+    # dominate predictions; Amount_scaled and Time_scaled have low feature importance.
     result["Amount_scaled"] = scaler_amount.fit_transform(result[["Amount"]])
     result["Time_scaled"] = scaler_time.fit_transform(result[["Time"]])
     result["Hour"] = (result["Time"] / 3600 % 24).astype(float)

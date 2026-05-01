@@ -21,30 +21,23 @@ _INJECTION_PATTERNS = [
 
 _COMPILED = [re.compile(p, re.IGNORECASE) for p in _INJECTION_PATTERNS]
 
-MAX_INPUT_LENGTH = 4096
-
 
 class InputGuardrail:
     """Validates and sanitizes user input before sending to the LLM."""
 
     def validate(self, text: str) -> tuple[bool, str]:
-        """Validate user input against injection and size constraints.
+        """Check input for prompt injection patterns.
 
         Args:
-            text: Raw user input.
+            text: Raw user input (length already validated by Pydantic schema).
 
         Returns:
             Tuple (is_valid, reason). reason is 'OK' when valid.
         """
-        if len(text) > MAX_INPUT_LENGTH:
-            logger.warning("Input bloqueado: tamanho %d > %d", len(text), MAX_INPUT_LENGTH)
-            return False, f"Input excede o limite de {MAX_INPUT_LENGTH} caracteres."
-
         for pattern in _COMPILED:
             if pattern.search(text):
                 logger.warning("Prompt injection detectado: %.80s", text)
                 return False, "Input bloqueado: padrão suspeito detectado."
-
         return True, "OK"
 
     def sanitize(self, text: str) -> str:

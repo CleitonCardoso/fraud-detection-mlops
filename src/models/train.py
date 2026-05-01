@@ -1,12 +1,15 @@
 """Training pipeline with MLflow tracking and Model Registry."""
 import logging
 import os
+import subprocess
 from pathlib import Path
+from typing import Any, Callable
 
 import mlflow
 import mlflow.sklearn
 import mlflow.pytorch
 import pandas as pd
+import yaml
 
 from src.features.feature_engineering import compute_features, split_features_target
 from src.features.feature_store import upsert_features
@@ -21,20 +24,8 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
 
-REQUIRED_TAGS: dict[str, type] = {
-    "model_name": str,
-    "model_version": str,
-    "model_type": str,
-    "training_data_version": str,
-    "owner": str,
-    "risk_level": str,
-    "fairness_checked": str,
-    "git_sha": str,
-}
-
 
 def _get_git_sha() -> str:
-    import subprocess
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except Exception:
@@ -43,20 +34,45 @@ def _get_git_sha() -> str:
 
 def _get_dvc_hash(path: str) -> str:
     dvc_file = Path(path + ".dvc")
-    if dvc_file.exists():
-        import yaml
-        with open(dvc_file) as f:
-            meta = yaml.safe_load(f)
-        return meta.get("outs", [{}])[0].get("md5", "unknown")
-    return "unknown"
+    if not dvc_file.exists():
+        return "unknown"
+    meta = yaml.safe_load(dvc_file.read_text())
+    return meta.get("outs", [{}])[0].get("md5", "unknown")
+
+
+def _log_experiment(
+    run_name: str,
+    model: Any,
+    params: dict,
+    metrics: dict,
+    tags: dict,
+    log_model_fn: Callable,
+    registered_model_name: str,
+) -> None:
+    """Log a single training run to MLflow — params, metrics, tags, and model artifact."""
+    with mlflow.start_run(run_name=run_name):
+        mlflow.log_params(params)
+        mlflow.log_metrics(metrics)
+        mlflow.set_tags(tags)
+        log_model_fn(model, "model", registered_model_name=registered_model_name)
+        logger.info("%s — AUC: %.4f  F1: %.4f", run_name, metrics["auc"], metrics["f1"])
+
+
+def _base_tags(model_name: str, dvc_hash: str, owner: str, git_sha: str) -> dict:
+    return {
+        "model_name": model_name,
+        "model_version": "1.0.0",
+        "model_type": "classification",
+        "training_data_version": dvc_hash,
+        "owner": owner,
+        "risk_level": "high",
+        "fairness_checked": "false",
+        "git_sha": git_sha,
+    }
 
 
 def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
-    """Full training pipeline: load → features → train → log → register.
-
-    Args:
-        data_path: Path to raw CSV file.
-    """
+    """Full training pipeline: load → features → train → log → register."""
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
     mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection"))
 
@@ -74,79 +90,50 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     dvc_hash = _get_dvc_hash(data_path)
     owner = os.getenv("OWNER_EMAIL", "owner@example.com")
 
-    # ── Logistic Regression ──────────────────────────────────────────
-    with mlflow.start_run(run_name="logistic_regression"):
-        lr_model = train_logistic_regression(X_train, y_train)
-        y_proba = lr_model.predict_proba(X_test)[:, 1]
-        y_pred = (y_proba >= 0.5).astype(int)
-        metrics = evaluate(y_test, y_pred, y_proba)
+    # Logistic Regression
+    lr_model = train_logistic_regression(X_train, y_train)
+    y_proba = lr_model.predict_proba(X_test)[:, 1]
+    _log_experiment(
+        run_name="logistic_regression",
+        model=lr_model,
+        params={"model_type": "logistic_regression", "class_weight": "balanced", "max_iter": 1000},
+        metrics=evaluate(y_test, (y_proba >= 0.5).astype(int), y_proba),
+        tags=_base_tags("fraud_detector_lr", dvc_hash, owner, git_sha),
+        log_model_fn=mlflow.sklearn.log_model,
+        registered_model_name="fraud_detector_lr",
+    )
 
-        mlflow.log_params({"model_type": "logistic_regression", "class_weight": "balanced", "max_iter": 1000})
-        mlflow.log_metrics(metrics)
-        mlflow.set_tags({
-            "model_name": "fraud_detector_lr",
-            "model_version": "1.0.0",
-            "model_type": "classification",
-            "training_data_version": dvc_hash,
-            "owner": owner,
-            "risk_level": "high",
-            "fairness_checked": "false",
-            "git_sha": git_sha,
-        })
-        mlflow.sklearn.log_model(lr_model, "model", registered_model_name="fraud_detector_lr")
-        logger.info("LR — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
+    # Random Forest
+    rf_model = train_random_forest(X_train, y_train)
+    y_proba = rf_model.predict_proba(X_test)[:, 1]
+    _log_experiment(
+        run_name="random_forest",
+        model=rf_model,
+        params={"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"},
+        metrics=evaluate(y_test, (y_proba >= 0.5).astype(int), y_proba),
+        tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
+        log_model_fn=mlflow.sklearn.log_model,
+        registered_model_name="fraud_detector_rf",
+    )
 
-    # ── Random Forest ────────────────────────────────────────────────
-    with mlflow.start_run(run_name="random_forest"):
-        rf_model = train_random_forest(X_train, y_train)
-        y_proba = rf_model.predict_proba(X_test)[:, 1]
-        y_pred = (y_proba >= 0.5).astype(int)
-        metrics = evaluate(y_test, y_pred, y_proba)
-
-        mlflow.log_params({"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"})
-        mlflow.log_metrics(metrics)
-        mlflow.set_tags({
-            "model_name": "fraud_detector_rf",
-            "model_version": "1.0.0",
-            "model_type": "classification",
-            "training_data_version": dvc_hash,
-            "owner": owner,
-            "risk_level": "high",
-            "fairness_checked": "false",
-            "git_sha": git_sha,
-        })
-        mlflow.sklearn.log_model(rf_model, "model", registered_model_name="fraud_detector_rf")
-        logger.info("RF  — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
-
-    # ── PyTorch MLP ──────────────────────────────────────────────────
+    # PyTorch MLP (skipped if torch is not available)
     try:
         if train_mlp is None:
             raise ImportError("torch not available")
         import numpy as np
-        with mlflow.start_run(run_name="mlp_pytorch"):
-            X_train_np = X_train.to_numpy(dtype="float32")
-            X_test_np = X_test.to_numpy(dtype="float32")
-            y_train_np = y_train.to_numpy(dtype="float32")
-
-            mlp_model = train_mlp(X_train_np, y_train_np)
-            y_proba_np = predict_proba_mlp(mlp_model, X_test_np)
-            y_pred_np = (y_proba_np >= 0.5).astype(int)
-            metrics = evaluate(y_test, pd.Series(y_pred_np), pd.Series(y_proba_np))
-
-            mlflow.log_params({"model_type": "mlp", "epochs": 20, "batch_size": 512, "lr": 1e-3, "hidden_dims": "[128,64,32]"})
-            mlflow.log_metrics(metrics)
-            mlflow.set_tags({
-                "model_name": "fraud_detector_mlp",
-                "model_version": "1.0.0",
-                "model_type": "classification",
-                "training_data_version": dvc_hash,
-                "owner": owner,
-                "risk_level": "high",
-                "fairness_checked": "false",
-                "git_sha": git_sha,
-            })
-            mlflow.pytorch.log_model(mlp_model, "model", registered_model_name="fraud_detector_mlp")
-            logger.info("MLP — AUC: %.4f  F1: %.4f", metrics["auc"], metrics["f1"])
+        X_train_np = X_train.to_numpy(dtype="float32")
+        X_test_np = X_test.to_numpy(dtype="float32")
+        mlp_model = train_mlp(X_train_np, y_train.to_numpy(dtype="float32"))
+        y_proba_np = predict_proba_mlp(mlp_model, X_test_np)
+        _log_experiment(
+            run_name="mlp_pytorch",
+            model=mlp_model,
+            params={"model_type": "mlp", "epochs": 20, "batch_size": 512, "lr": 1e-3, "hidden_dims": "[128,64,32]"},
+            metrics=evaluate(y_test, pd.Series((y_proba_np >= 0.5).astype(int)), pd.Series(y_proba_np)),
+            tags=_base_tags("fraud_detector_mlp", dvc_hash, owner, git_sha),
+            log_model_fn=mlflow.pytorch.log_model,
+            registered_model_name="fraud_detector_mlp",
+        )
     except ImportError:
         logger.warning("torch não instalado — MLP ignorado. Execute: pip install torch")
 

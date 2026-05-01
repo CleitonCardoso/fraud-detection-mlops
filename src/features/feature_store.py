@@ -21,12 +21,15 @@ def upsert_features(new_features: pd.DataFrame, id_col: str = "transaction_id") 
         combined = pd.concat([existing, new_features])
         if id_col in combined.columns:
             combined = combined.drop_duplicates(subset=[id_col], keep="last")
+        logger.info(
+            "Upsert: %d existentes + %d novos = %d total",
+            len(existing), len(new_features), len(combined),
+        )
         result = combined
-        logger.info("Upsert: %d registros existentes + %d novos = %d total", len(existing), len(new_features), len(result))
     else:
         STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Feature store criado com %d registros", len(new_features))
         result = new_features
-        logger.info("Feature store criado com %d registros", len(result))
 
     result.to_parquet(STORE_PATH, index=False)
 

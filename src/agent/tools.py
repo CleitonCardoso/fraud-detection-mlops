@@ -1,7 +1,7 @@
 """Custom tools for the fraud detection ReAct agent."""
 import json
 import logging
-import os
+from functools import lru_cache
 from pathlib import Path
 
 import mlflow
@@ -13,6 +13,12 @@ from langchain_core.tools import tool
 from src.agent.rag_pipeline import retrieve
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _load_production_model():
+    """Load the production model once and cache it for the process lifetime."""
+    return mlflow.sklearn.load_model("models:/fraud_detector_rf@Production")
 
 
 @tool
@@ -31,33 +37,30 @@ def fraud_predictor(transaction_json: str) -> str:
         return json.dumps({"error": "transaction_json inválido — deve ser um JSON válido."})
 
     try:
-        model = mlflow.sklearn.load_model("models:/fraud_detector_rf@Production")
+        model = _load_production_model()
     except Exception:
         return json.dumps({"error": "Modelo não encontrado no MLflow Registry. Execute make train primeiro."})
 
     from src.features.feature_engineering import compute_features
 
-    df = pd.DataFrame([transaction])
     try:
-        features = compute_features(df).drop(columns=["Class"], errors="ignore")
+        features = compute_features(pd.DataFrame([transaction])).drop(columns=["Class"], errors="ignore")
     except Exception as e:
         return json.dumps({"error": f"Erro no feature engineering: {e}"})
 
     proba = model.predict_proba(features)[0][1]
     label = "fraude" if proba >= 0.5 else "legítima"
 
+    top_risk = []
     try:
         import shap
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(features)[1][0]
-        top_features = sorted(
-            zip(features.columns, shap_values),
-            key=lambda x: abs(x[1]),
-            reverse=True,
-        )[:5]
-        top_risk = [{"feature": f, "contribution": round(float(v), 4)} for f, v in top_features]
+        shap_values = shap.TreeExplainer(model).shap_values(features)[1][0]
+        top_risk = [
+            {"feature": f, "contribution": round(float(v), 4)}
+            for f, v in sorted(zip(features.columns, shap_values), key=lambda x: abs(x[1]), reverse=True)[:5]
+        ]
     except Exception:
-        top_risk = []
+        pass
 
     return json.dumps({
         "fraud_score": round(float(proba), 4),
@@ -104,7 +107,7 @@ def drift_report(feature: str = "") -> str:
 
     return (
         f"Último relatório de drift gerado em {report_path.stat().st_mtime}.\n"
-        f"Thresholds configurados: warning PSI > {warning_threshold}, retrain PSI > {retrain_threshold}.\n"
+        f"Thresholds: warning PSI > {warning_threshold}, retrain PSI > {retrain_threshold}.\n"
         f"Relatório completo disponível em {report_path}.\n"
         f"Para análise de feature específica, consulte o dashboard Grafana em http://localhost:3000."
     )
