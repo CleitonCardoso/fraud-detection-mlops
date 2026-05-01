@@ -71,7 +71,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
-ignore = ["E501"]
+ignore = ["E501", "N803", "N806"]  # N803/N806: uppercase X/X_train is standard ML notation
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402"]

@@ -32,7 +32,7 @@ def compute_psi(reference: pd.Series, current: pd.Series, bins: int = 10) -> flo
 
     psi = sum(
         (c - r) * math.log(c / r)
-        for r, c in zip(ref_pct, cur_pct)
+        for r, c in zip(ref_pct, cur_pct, strict=False)
         if r > 0 and c > 0
     )
     return float(abs(psi))
@@ -44,7 +44,7 @@ def run_drift_report(
     output_path: str = "data/processed/drift_report.html",
 ) -> dict[str, float]:
     """Run Evidently drift report and emit Prometheus metrics + retrain signal."""
-    from evidently import Report, Dataset, DataDefinition
+    from evidently import DataDefinition, Dataset, Report
     from evidently.presets import DataDriftPreset
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

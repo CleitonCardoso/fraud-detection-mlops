@@ -57,7 +57,7 @@ def fraud_predictor(transaction_json: str) -> str:
         shap_values = shap.TreeExplainer(model).shap_values(features)[1][0]
         top_risk = [
             {"feature": f, "contribution": round(float(v), 4)}
-            for f, v in sorted(zip(features.columns, shap_values), key=lambda x: abs(x[1]), reverse=True)[:5]
+            for f, v in sorted(zip(features.columns, shap_values, strict=True), key=lambda x: abs(x[1]), reverse=True)[:5]
         ]
     except Exception:
         pass

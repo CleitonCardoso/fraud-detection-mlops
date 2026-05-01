@@ -2,18 +2,24 @@
 import logging
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import mlflow
-import mlflow.sklearn
 import mlflow.pytorch
+import mlflow.sklearn
 import pandas as pd
 import yaml
 
 from src.features.feature_engineering import compute_features, split_features_target
 from src.features.feature_store import upsert_features
-from src.models.baseline import evaluate, get_splits, train_logistic_regression, train_random_forest
+from src.models.baseline import (
+    evaluate,
+    get_splits,
+    train_logistic_regression,
+    train_random_forest,
+)
 
 try:
     from src.models.mlp import predict_proba_mlp, train_mlp
@@ -120,7 +126,6 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     try:
         if train_mlp is None:
             raise ImportError("torch not available")
-        import numpy as np
         X_train_np = X_train.to_numpy(dtype="float32")
         X_test_np = X_test.to_numpy(dtype="float32")
         mlp_model = train_mlp(X_train_np, y_train.to_numpy(dtype="float32"))
