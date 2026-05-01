@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,8 +13,9 @@ def _get_ragas_llm():
     """Return LangChain LLM for RAGAS: Ollama if available, else OpenAI."""
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
-        from langchain_ollama import ChatOllama
         import urllib.request
+
+        from langchain_ollama import ChatOllama
         urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
         model = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
         logger.info("RAGAS usando Ollama LLM: %s", model)
@@ -35,8 +35,9 @@ def _get_ragas_embeddings():
     """Return embeddings for RAGAS: Ollama if available, else OpenAI."""
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
-        from langchain_ollama import OllamaEmbeddings
         import urllib.request
+
+        from langchain_ollama import OllamaEmbeddings
         urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
         logger.info("RAGAS usando Ollama embeddings")
         return OllamaEmbeddings(model="nomic-embed-text", base_url=ollama_url)
@@ -55,9 +56,15 @@ def run_ragas(golden_set_path: str = GOLDEN_SET_PATH) -> dict[str, float]:
     """Evaluate the RAG pipeline using RAGAS 4 metrics."""
     from datasets import Dataset
     from ragas import evaluate
-    from ragas.metrics import answer_relevancy, context_precision, context_recall, faithfulness
-    from ragas.llms import LangchainLLMWrapper
     from ragas.embeddings import LangchainEmbeddingsWrapper
+    from ragas.llms import LangchainLLMWrapper
+    from ragas.metrics import (
+        answer_relevancy,
+        context_precision,
+        context_recall,
+        faithfulness,
+    )
+
     from src.agent.rag_pipeline import retrieve
     from src.agent.react_agent import query as agent_query
 

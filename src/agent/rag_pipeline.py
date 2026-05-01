@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 
 from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,9 @@ def _get_embeddings():
     openai_key = os.getenv("OPENAI_API_KEY", "")
 
     try:
-        from langchain_ollama import OllamaEmbeddings
         import urllib.request
+
+        from langchain_ollama import OllamaEmbeddings
         urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
         logger.info("Usando Ollama embeddings (nomic-embed-text)")
         return OllamaEmbeddings(model="nomic-embed-text", base_url=ollama_url)

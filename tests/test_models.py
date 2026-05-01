@@ -1,9 +1,13 @@
 """Tests for baseline models — determinism, output shape, prediction range."""
-import numpy as np
 import pandas as pd
 import pytest
 
-from src.models.baseline import evaluate, get_splits, train_logistic_regression, train_random_forest
+from src.models.baseline import (
+    evaluate,
+    get_splits,
+    train_logistic_regression,
+    train_random_forest,
+)
 
 
 def test_logistic_regression_predicts_probabilities(feature_target_split):

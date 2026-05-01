@@ -23,8 +23,9 @@ def _get_llm(model_name: str, temperature: float = 0.0):
     openai_key = os.getenv("OPENAI_API_KEY", "")
 
     try:
-        from langchain_ollama import ChatOllama
         import urllib.request
+
+        from langchain_ollama import ChatOllama
         urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
         logger.info("Usando Ollama LLM: %s", ollama_model)

@@ -1,6 +1,6 @@
 """Smoke tests for the agent tools — no real LLM calls."""
-from unittest.mock import MagicMock, patch
 import json
+from unittest.mock import patch
 
 import pytest
 

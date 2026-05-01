@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,8 +28,9 @@ def _get_judge_llm():
     """Return LLM for judging: Ollama if available, else OpenAI."""
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
-        from langchain_ollama import ChatOllama
         import urllib.request
+
+        from langchain_ollama import ChatOllama
         urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
         model = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
         logger.info("LLM judge usando Ollama: %s", model)

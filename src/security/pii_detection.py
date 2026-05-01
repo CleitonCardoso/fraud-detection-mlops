@@ -1,7 +1,12 @@
 """PII detection and anonymization using Microsoft Presidio."""
 import logging
 
-from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer, RecognizerRegistry
+from presidio_analyzer import (
+    AnalyzerEngine,
+    Pattern,
+    PatternRecognizer,
+    RecognizerRegistry,
+)
 from presidio_anonymizer import AnonymizerEngine
 
 logger = logging.getLogger(__name__)

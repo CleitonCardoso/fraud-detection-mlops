@@ -1,6 +1,5 @@
 """Tests for feature engineering — schema contracts and invariants."""
 import pandas as pd
-import pytest
 
 from src.features.feature_engineering import compute_features, split_features_target
 
