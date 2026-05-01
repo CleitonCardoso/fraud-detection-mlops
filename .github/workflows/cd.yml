@@ -8,6 +8,7 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     environment: staging
+    if: ${{ secrets.GCP_SA_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,12 +26,14 @@ jobs:
           env_vars: |
             APP_ENV=staging
             MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OLLAMA_BASE_URL=${{ secrets.OLLAMA_BASE_URL }}
+            OLLAMA_MODEL=${{ secrets.OLLAMA_MODEL }}
 
   deploy-production:
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: production          # requires manual approval in GitHub settings
+    if: ${{ secrets.GCP_SA_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,4 +51,5 @@ jobs:
           env_vars: |
             APP_ENV=production
             MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OLLAMA_BASE_URL=${{ secrets.OLLAMA_BASE_URL }}
+            OLLAMA_MODEL=${{ secrets.OLLAMA_MODEL }}
