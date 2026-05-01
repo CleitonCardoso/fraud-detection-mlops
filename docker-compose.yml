@@ -25,15 +25,18 @@ services:
     image: prom/prometheus:v2.51.0
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./configs/prometheus_alerts.yml:/etc/prometheus/alerts.yml
 
   grafana:
     image: grafana/grafana:10.4.0
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=datathon
     volumes:
       - grafana_data:/var/lib/grafana
       - ./configs/grafana/provisioning:/etc/grafana/provisioning
