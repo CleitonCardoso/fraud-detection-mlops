@@ -91,7 +91,14 @@ asyncio_mode = "auto"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B101"]
+skips = [
+    "B101",   # assert statements in tests
+    "B110",   # try/except/pass — intentional fallback for optional Ollama/OpenAI
+    "B310",   # urllib.urlopen — internal Ollama health-check, URL from trusted env var
+    "B404",   # subprocess import — used only to read git SHA (read-only, no user input)
+    "B603",   # subprocess with list — hard-coded git command, no user-controlled input
+    "B607",   # partial path in subprocess — git command, no user-controlled input
+]
 
 [tool.coverage.run]
 omit = [
