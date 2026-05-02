@@ -91,4 +91,4 @@ def get_splits(
     Returns:
         Tuple (X_train, X_test, y_train, y_test).
     """
-    return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
+    return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)  # type: ignore[no-any-return]

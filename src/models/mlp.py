@@ -26,7 +26,7 @@ class FraudMLP(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.network(x).squeeze(1)
+        return self.network(x).squeeze(1)  # type: ignore[no-any-return]
 
 
 def train_mlp(
@@ -75,7 +75,7 @@ def train_mlp(
             logger.info("Epoch %d/%d — loss: %.4f", epoch + 1, epochs, total_loss / len(loader))
 
     model.eval()
-    return model
+    return model  # type: ignore[no-any-return]
 
 
 def predict_proba_mlp(model: FraudMLP, X: np.ndarray) -> np.ndarray:
@@ -92,4 +92,4 @@ def predict_proba_mlp(model: FraudMLP, X: np.ndarray) -> np.ndarray:
     with torch.no_grad():
         X_t = torch.tensor(X, dtype=torch.float32).to(device)
         logits = model(X_t)
-        return torch.sigmoid(logits).cpu().numpy()
+        return torch.sigmoid(logits).cpu().numpy()  # type: ignore[no-any-return]

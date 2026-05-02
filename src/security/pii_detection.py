@@ -62,7 +62,7 @@ def anonymize(text: str, language: str = "en") -> str:
     if not results:
         return text
     logger.warning("PII detectado: %d entidade(s) — anonimizando", len(results))
-    return _anonymizer.anonymize(text=text, analyzer_results=results).text
+    return _anonymizer.anonymize(text=text, analyzer_results=results).text  # type: ignore[arg-type]
 
 
 def contains_pii(text: str, language: str = "en") -> bool:

@@ -36,7 +36,7 @@ def _get_llm(model_name: str, temperature: float = 0.0):
     if openai_key:
         from langchain_openai import ChatOpenAI
         logger.info("Usando OpenAI LLM: %s", model_name)
-        return ChatOpenAI(model=model_name, temperature=temperature, api_key=openai_key)
+        return ChatOpenAI(model=model_name, temperature=temperature, api_key=openai_key)  # type: ignore[arg-type]
 
     raise RuntimeError(
         "Nenhum LLM disponível. Inicie o Ollama (ollama serve) ou configure OPENAI_API_KEY."

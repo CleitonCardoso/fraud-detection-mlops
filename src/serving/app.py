@@ -45,8 +45,8 @@ def _load_model() -> None:
             order_by=["metrics.auc DESC"],
             max_results=1,
         )
-        if not run.empty:
-            model_auc_gauge.set(run.iloc[0].get("metrics.auc", 0.0))
+        if not run.empty:  # type: ignore[union-attr]
+            model_auc_gauge.set(run.iloc[0].get("metrics.auc", 0.0))  # type: ignore[union-attr]
         _model = mlflow.sklearn.load_model("models:/fraud_detector_rf@Production")
         logger.info("Modelo carregado do MLflow Registry")
     except Exception as e:

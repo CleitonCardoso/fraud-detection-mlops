@@ -43,7 +43,7 @@ def _get_dvc_hash(path: str) -> str:
     if not dvc_file.exists():
         return "unknown"
     meta = yaml.safe_load(dvc_file.read_text())
-    return meta.get("outs", [{}])[0].get("md5", "unknown")
+    return meta.get("outs", [{}])[0].get("md5", "unknown")  # type: ignore[no-any-return]
 
 
 def _log_experiment(
