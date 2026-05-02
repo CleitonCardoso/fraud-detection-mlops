@@ -3,6 +3,8 @@ import json
 import logging
 import os
 
+import mlflow
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,6 @@ def run_llm_judge(golden_set_path: str = GOLDEN_SET_PATH) -> dict[str, float]:
     n = len(golden_set)
     averages = {k: round(v / n, 3) for k, v in totals.items()}
 
-    import mlflow
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
     with mlflow.start_run(run_name="llm_judge_evaluation"):
         mlflow.log_metrics({f"judge_{k}": v for k, v in averages.items()})

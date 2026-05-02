@@ -3,6 +3,8 @@ import json
 import logging
 import os
 
+import mlflow
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,6 @@ def run_ragas(golden_set_path: str = GOLDEN_SET_PATH) -> dict[str, float]:
         "context_recall": float(scores["context_recall"]),
     }
 
-    import mlflow
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
     with mlflow.start_run(run_name="ragas_evaluation"):
         mlflow.log_metrics(metrics)
