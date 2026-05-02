@@ -20,6 +20,10 @@ from src.models.baseline import (
     train_logistic_regression,
     train_random_forest,
 )
+from src.monitoring.metrics import (
+    champion_challenger_delta_gauge,
+    retrain_triggered_total,
+)
 
 try:
     from src.models.mlp import predict_proba_mlp, train_mlp
@@ -77,6 +81,54 @@ def _base_tags(model_name: str, dvc_hash: str, owner: str, git_sha: str) -> dict
     }
 
 
+def _get_champion_auc(registered_model_name: str) -> float | None:
+    """Return AUC of the current @Production model, or None if no champion exists."""
+    try:
+        client = mlflow.MlflowClient()
+        alias_mv = client.get_model_version_by_alias(registered_model_name, "Production")
+        run = mlflow.get_run(alias_mv.run_id or "")
+        return run.data.metrics.get("auc")  # type: ignore[no-any-return]
+    except Exception:
+        return None
+
+
+def _promote_if_better(
+    registered_model_name: str,
+    challenger_auc: float,
+    min_delta: float = 0.005,
+) -> bool:
+    """Promote challenger to @Production if it beats the champion by min_delta.
+
+    Returns True if promoted.
+    """
+    client = mlflow.MlflowClient()
+    champion_auc = _get_champion_auc(registered_model_name)
+
+    if champion_auc is None:
+        logger.info("Nenhum champion encontrado — promovendo challenger diretamente")
+        delta = challenger_auc
+    else:
+        delta = challenger_auc - champion_auc
+        logger.info(
+            "Champion AUC=%.4f  Challenger AUC=%.4f  Delta=%.4f  (mínimo=%.4f)",
+            champion_auc, challenger_auc, delta, min_delta,
+        )
+
+    champion_challenger_delta_gauge.set(delta)
+
+    if champion_auc is None or delta >= min_delta:
+        versions = client.search_model_versions(f"name='{registered_model_name}'")
+        latest = max(versions, key=lambda v: int(v.version))
+        client.set_registered_model_alias(registered_model_name, "Production", latest.version)
+        logger.info("Challenger promovido a @Production (versão %s)", latest.version)
+        retrain_triggered_total.labels(reason="drift", outcome="promoted").inc()
+        return True
+
+    logger.info("Challenger não promovido — delta insuficiente")
+    retrain_triggered_total.labels(reason="drift", outcome="rejected").inc()
+    return False
+
+
 def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     """Full training pipeline: load → features → train → log → register."""
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
@@ -98,29 +150,32 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
 
     # Logistic Regression
     lr_model = train_logistic_regression(X_train, y_train)
-    y_proba = lr_model.predict_proba(X_test)[:, 1]
+    y_proba = pd.Series(lr_model.predict_proba(X_test)[:, 1])
     _log_experiment(
         run_name="logistic_regression",
         model=lr_model,
         params={"model_type": "logistic_regression", "class_weight": "balanced", "max_iter": 1000},
-        metrics=evaluate(y_test, (y_proba >= 0.5).astype(int), y_proba),
+        metrics=evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), y_proba),
         tags=_base_tags("fraud_detector_lr", dvc_hash, owner, git_sha),
         log_model_fn=mlflow.sklearn.log_model,
         registered_model_name="fraud_detector_lr",
     )
 
-    # Random Forest
+    # Random Forest — champion-challenger promotion
     rf_model = train_random_forest(X_train, y_train)
     y_proba = rf_model.predict_proba(X_test)[:, 1]
+    rf_metrics = evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), pd.Series(y_proba))
     _log_experiment(
         run_name="random_forest",
         model=rf_model,
         params={"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"},
-        metrics=evaluate(y_test, (y_proba >= 0.5).astype(int), y_proba),
+        metrics=rf_metrics,
         tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
         log_model_fn=mlflow.sklearn.log_model,
         registered_model_name="fraud_detector_rf",
     )
+    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())["retraining"]["champion_min_delta_auc"]
+    _promote_if_better("fraud_detector_rf", rf_metrics["auc"], min_delta=min_delta)
 
     # PyTorch MLP (skipped if torch is not available)
     try:

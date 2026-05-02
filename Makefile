@@ -1,4 +1,4 @@
-.PHONY: setup data train serve test eval drift demo lint format clean
+.PHONY: setup data train retrain serve test eval drift demo lint format clean
 
 # ── Setup ──────────────────────────────────────────────────────────────
 setup:
@@ -43,6 +43,16 @@ eval:
 # ── Monitoring ─────────────────────────────────────────────────────────
 drift:
 	python src/monitoring/drift.py
+
+retrain:
+	@echo "Verificando drift antes de retreinar..."
+	@python src/monitoring/drift.py; \
+	if [ $$? -ne 0 ]; then \
+		echo "Drift detectado — iniciando retreinamento..."; \
+		python src/models/train.py; \
+	else \
+		echo "Sem drift crítico — retreinamento não necessário."; \
+	fi
 
 # ── Code quality ───────────────────────────────────────────────────────
 lint:

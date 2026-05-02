@@ -35,3 +35,14 @@ model_auc_gauge = Gauge(
     "fraud_model_auc",
     "AUC of the current production model",
 )
+
+retrain_triggered_total = Counter(
+    "fraud_retrain_triggered_total",
+    "Number of retraining runs triggered",
+    labelnames=["reason", "outcome"],
+)
+
+champion_challenger_delta_gauge = Gauge(
+    "fraud_champion_challenger_auc_delta",
+    "AUC delta between the latest challenger and the current champion (positive = challenger wins)",
+)

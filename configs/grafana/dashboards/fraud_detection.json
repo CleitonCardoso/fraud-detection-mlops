@@ -509,6 +509,145 @@
           }
         }
       }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Retrain Triggers (total)",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "sum(fraud_retrain_triggered_total)",
+          "legendFormat": "total",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Retrain Outcome",
+      "gridPos": {
+        "x": 6,
+        "y": 32,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "fraud_retrain_triggered_total{outcome=\"promoted\"}",
+          "legendFormat": "promoted",
+          "refId": "A"
+        },
+        {
+          "expr": "fraud_retrain_triggered_total{outcome=\"rejected\"}",
+          "legendFormat": "rejected",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 14,
+      "type": "gauge",
+      "title": "Champion-Challenger AUC Delta",
+      "description": "Positive = challenger beats champion. Promoted if >= 0.005.",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "fraud_champion_challenger_auc_delta",
+          "legendFormat": "delta",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": -0.1,
+          "max": 0.1,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": -0.1
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 0.005
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }
