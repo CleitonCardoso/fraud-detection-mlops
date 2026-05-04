@@ -1,4 +1,5 @@
 """Training pipeline with MLflow tracking and Model Registry."""
+
 import logging
 import os
 import subprocess
@@ -6,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import joblib
 import mlflow
 import mlflow.pytorch
 import mlflow.sklearn
@@ -31,13 +33,19 @@ except ImportError:
     train_mlp = None  # type: ignore[assignment]
     predict_proba_mlp = None  # type: ignore[assignment]
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
 def _get_git_sha() -> str:
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+        return (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+            .decode()
+            .strip()
+        )
     except Exception:
         return "unknown"
 
@@ -85,7 +93,9 @@ def _get_champion_auc(registered_model_name: str) -> float | None:
     """Return AUC of the current @Production model, or None if no champion exists."""
     try:
         client = mlflow.MlflowClient()
-        alias_mv = client.get_model_version_by_alias(registered_model_name, "Production")
+        alias_mv = client.get_model_version_by_alias(
+            registered_model_name, "Production"
+        )
         run = mlflow.get_run(alias_mv.run_id or "")
         return run.data.metrics.get("auc")  # type: ignore[no-any-return]
     except Exception:
@@ -111,7 +121,10 @@ def _promote_if_better(
         delta = challenger_auc - champion_auc
         logger.info(
             "Champion AUC=%.4f  Challenger AUC=%.4f  Delta=%.4f  (mínimo=%.4f)",
-            champion_auc, challenger_auc, delta, min_delta,
+            champion_auc,
+            challenger_auc,
+            delta,
+            min_delta,
         )
 
     champion_challenger_delta_gauge.set(delta)
@@ -119,7 +132,9 @@ def _promote_if_better(
     if champion_auc is None or delta >= min_delta:
         versions = client.search_model_versions(f"name='{registered_model_name}'")
         latest = max(versions, key=lambda v: int(v.version))
-        client.set_registered_model_alias(registered_model_name, "Production", latest.version)
+        client.set_registered_model_alias(
+            registered_model_name, "Production", latest.version
+        )
         logger.info("Challenger promovido a @Production (versão %s)", latest.version)
         retrain_triggered_total.labels(reason="drift", outcome="promoted").inc()
         return True
@@ -136,10 +151,17 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
 
     logger.info("Carregando dados de %s", data_path)
     df_raw = pd.read_csv(data_path)
-    logger.info("Dataset: %d linhas, fraudes: %.2f%%", len(df_raw), df_raw["Class"].mean() * 100)
+    logger.info(
+        "Dataset: %d linhas, fraudes: %.2f%%", len(df_raw), df_raw["Class"].mean() * 100
+    )
 
-    df = compute_features(df_raw)
+    df, scalers = compute_features(df_raw)
     upsert_features(df)
+
+    scalers_path = Path("data/processed/scalers.pkl")
+    scalers_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(scalers, scalers_path)
+    logger.info("Scalers salvos em %s", scalers_path)
 
     X, y = split_features_target(df)
     X_train, X_test, y_train, y_test = get_splits(X, y)
@@ -154,7 +176,11 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     _log_experiment(
         run_name="logistic_regression",
         model=lr_model,
-        params={"model_type": "logistic_regression", "class_weight": "balanced", "max_iter": 1000},
+        params={
+            "model_type": "logistic_regression",
+            "class_weight": "balanced",
+            "max_iter": 1000,
+        },
         metrics=evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), y_proba),
         tags=_base_tags("fraud_detector_lr", dvc_hash, owner, git_sha),
         log_model_fn=mlflow.sklearn.log_model,
@@ -164,17 +190,25 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     # Random Forest — champion-challenger promotion
     rf_model = train_random_forest(X_train, y_train)
     y_proba = rf_model.predict_proba(X_test)[:, 1]
-    rf_metrics = evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), pd.Series(y_proba))
+    rf_metrics = evaluate(
+        y_test, pd.Series((y_proba >= 0.5).astype(int)), pd.Series(y_proba)
+    )
     _log_experiment(
         run_name="random_forest",
         model=rf_model,
-        params={"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"},
+        params={
+            "model_type": "random_forest",
+            "n_estimators": 100,
+            "class_weight": "balanced",
+        },
         metrics=rf_metrics,
         tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
         log_model_fn=mlflow.sklearn.log_model,
         registered_model_name="fraud_detector_rf",
     )
-    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())["retraining"]["champion_min_delta_auc"]
+    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())[
+        "retraining"
+    ]["champion_min_delta_auc"]
     _promote_if_better("fraud_detector_rf", rf_metrics["auc"], min_delta=min_delta)
 
     # PyTorch MLP (skipped if torch is not available)
@@ -188,8 +222,18 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
         _log_experiment(
             run_name="mlp_pytorch",
             model=mlp_model,
-            params={"model_type": "mlp", "epochs": 20, "batch_size": 512, "lr": 1e-3, "hidden_dims": "[128,64,32]"},
-            metrics=evaluate(y_test, pd.Series((y_proba_np >= 0.5).astype(int)), pd.Series(y_proba_np)),
+            params={
+                "model_type": "mlp",
+                "epochs": 20,
+                "batch_size": 512,
+                "lr": 1e-3,
+                "hidden_dims": "[128,64,32]",
+            },
+            metrics=evaluate(
+                y_test,
+                pd.Series((y_proba_np >= 0.5).astype(int)),
+                pd.Series(y_proba_np),
+            ),
             tags=_base_tags("fraud_detector_mlp", dvc_hash, owner, git_sha),
             log_model_fn=mlflow.pytorch.log_model,
             registered_model_name="fraud_detector_mlp",
@@ -197,7 +241,10 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     except ImportError:
         logger.warning("torch não instalado — MLP ignorado. Execute: pip install torch")
 
-    logger.info("Treino completo. Acesse o MLflow em %s", os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+    logger.info(
+        "Treino completo. Acesse o MLflow em %s",
+        os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"),
+    )
 
 
 if __name__ == "__main__":

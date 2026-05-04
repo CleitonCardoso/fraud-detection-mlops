@@ -1,11 +1,12 @@
 """Tests for feature engineering — schema contracts and invariants."""
+
 import pandas as pd
 
 from src.features.feature_engineering import compute_features, split_features_target
 
 
 def test_output_has_expected_columns(raw_transactions: pd.DataFrame) -> None:
-    result = compute_features(raw_transactions)
+    result, _ = compute_features(raw_transactions)
     assert "Amount_scaled" in result.columns
     assert "Time_scaled" in result.columns
     assert "Hour" in result.columns
@@ -15,22 +16,22 @@ def test_output_has_expected_columns(raw_transactions: pd.DataFrame) -> None:
 
 
 def test_no_nulls_after_transform(raw_transactions: pd.DataFrame) -> None:
-    result = compute_features(raw_transactions)
+    result, _ = compute_features(raw_transactions)
     assert result.isnull().sum().sum() == 0
 
 
 def test_row_count_preserved(raw_transactions: pd.DataFrame) -> None:
-    result = compute_features(raw_transactions)
+    result, _ = compute_features(raw_transactions)
     assert len(result) == len(raw_transactions)
 
 
 def test_hour_within_valid_range(raw_transactions: pd.DataFrame) -> None:
-    result = compute_features(raw_transactions)
+    result, _ = compute_features(raw_transactions)
     assert ((result["Hour"] >= 0) & (result["Hour"] < 24)).all()
 
 
 def test_amount_log_non_negative(raw_transactions: pd.DataFrame) -> None:
-    result = compute_features(raw_transactions)
+    result, _ = compute_features(raw_transactions)
     assert (result["Amount_log"] >= 0).all()
 
 

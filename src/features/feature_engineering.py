@@ -1,4 +1,5 @@
 """Feature engineering pipeline for credit card fraud detection."""
+
 import logging
 
 import pandas as pd
@@ -20,26 +21,30 @@ FEATURE_SCHEMA = DataFrameSchema(
 )
 
 
-def compute_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_features(
+    df: pd.DataFrame, scalers: dict | None = None
+) -> tuple[pd.DataFrame, dict]:
     """Transform raw transaction data into model-ready features.
 
     Args:
         df: Raw DataFrame with columns Time, Amount, V1-V28.
+        scalers: Optional dict {"amount": StandardScaler, "time": StandardScaler}
+            already fitted on training data. If None, new scalers are fitted
+            on `df` (training mode); otherwise existing scalers are used to
+            transform (inference mode).
 
     Returns:
-        DataFrame with engineered features, validated against schema.
+        Tuple (features DataFrame, scalers dict).
     """
     result = df.copy()
 
-    scaler_amount = StandardScaler()
-    scaler_time = StandardScaler()
+    if scalers is None:
+        scaler_amount = StandardScaler().fit(result[["Amount"]])
+        scaler_time = StandardScaler().fit(result[["Time"]])
+        scalers = {"amount": scaler_amount, "time": scaler_time}
 
-    # fit_transform on each call is intentional for training; in production serving
-    # a single-row input is effectively z-scored against itself (mean=value, std≈0→1).
-    # Acceptable here because the model was trained on PCA features (V1-V28) that
-    # dominate predictions; Amount_scaled and Time_scaled have low feature importance.
-    result["Amount_scaled"] = scaler_amount.fit_transform(result[["Amount"]])
-    result["Time_scaled"] = scaler_time.fit_transform(result[["Time"]])
+    result["Amount_scaled"] = scalers["amount"].transform(result[["Amount"]])
+    result["Time_scaled"] = scalers["time"].transform(result[["Time"]])
     result["Hour"] = (result["Time"] / 3600 % 24).astype(float)
     result["Amount_log"] = (result["Amount"] + 1).transform("log")
 
@@ -47,11 +52,17 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 
     FEATURE_SCHEMA.validate(result.drop(columns=["Class"], errors="ignore"))
 
-    logger.info("Feature engineering concluído: %d registros, %d features", len(result), result.shape[1])
-    return result
+    logger.info(
+        "Feature engineering concluído: %d registros, %d features",
+        len(result),
+        result.shape[1],
+    )
+    return result, scalers
 
 
-def split_features_target(df: pd.DataFrame, target_col: str = "Class") -> tuple[pd.DataFrame, pd.Series]:
+def split_features_target(
+    df: pd.DataFrame, target_col: str = "Class"
+) -> tuple[pd.DataFrame, pd.Series]:
     """Split DataFrame into features and target series.
 
     Args:

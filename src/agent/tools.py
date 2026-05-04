@@ -1,9 +1,11 @@
 """Custom tools for the fraud detection ReAct agent."""
+
 import json
 import logging
 from functools import lru_cache
 from pathlib import Path
 
+import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -34,17 +36,26 @@ def fraud_predictor(transaction_json: str) -> str:
     try:
         transaction = json.loads(transaction_json)
     except json.JSONDecodeError:
-        return json.dumps({"error": "transaction_json inválido — deve ser um JSON válido."})
+        return json.dumps(
+            {"error": "transaction_json inválido — deve ser um JSON válido."}
+        )
 
     try:
         model = _load_production_model()
     except Exception:
-        return json.dumps({"error": "Modelo não encontrado no MLflow Registry. Execute make train primeiro."})
+        return json.dumps(
+            {
+                "error": "Modelo não encontrado no MLflow Registry. Execute make train primeiro."
+            }
+        )
 
     from src.features.feature_engineering import compute_features
 
     try:
-        features = compute_features(pd.DataFrame([transaction])).drop(columns=["Class"], errors="ignore")
+        scalers_path = Path("data/processed/scalers.pkl")
+        scalers = joblib.load(scalers_path) if scalers_path.exists() else None
+        features, _ = compute_features(pd.DataFrame([transaction]), scalers=scalers)
+        features = features.drop(columns=["Class"], errors="ignore")
     except Exception as e:
         return json.dumps({"error": f"Erro no feature engineering: {e}"})
 
@@ -54,19 +65,27 @@ def fraud_predictor(transaction_json: str) -> str:
     top_risk = []
     try:
         import shap
+
         shap_values = shap.TreeExplainer(model).shap_values(features)[1][0]
         top_risk = [
             {"feature": f, "contribution": round(float(v), 4)}
-            for f, v in sorted(zip(features.columns, shap_values, strict=True), key=lambda x: abs(x[1]), reverse=True)[:5]
+            for f, v in sorted(
+                zip(features.columns, shap_values, strict=True),
+                key=lambda x: abs(x[1]),
+                reverse=True,
+            )[:5]
         ]
     except Exception:
         pass
 
-    return json.dumps({
-        "fraud_score": round(float(proba), 4),
-        "label": label,
-        "top_risk_factors": top_risk,
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "fraud_score": round(float(proba), 4),
+            "label": label,
+            "top_risk_factors": top_risk,
+        },
+        ensure_ascii=False,
+    )
 
 
 @tool

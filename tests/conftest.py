@@ -1,4 +1,5 @@
 """Shared fixtures for all tests — synthetic data only, never real data."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -33,20 +34,29 @@ def raw_transactions() -> pd.DataFrame:
         }
     )
 
-    return pd.concat([legit, fraud], ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+    return (
+        pd.concat([legit, fraud], ignore_index=True)
+        .sample(frac=1, random_state=42)
+        .reset_index(drop=True)
+    )
 
 
 @pytest.fixture
 def engineered_features(raw_transactions: pd.DataFrame) -> pd.DataFrame:
     """Pre-computed features from raw transactions."""
     from src.features.feature_engineering import compute_features
-    return compute_features(raw_transactions)
+
+    df, _ = compute_features(raw_transactions)
+    return df
 
 
 @pytest.fixture
-def feature_target_split(engineered_features: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+def feature_target_split(
+    engineered_features: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.Series]:
     """X, y split from engineered features."""
     from src.features.feature_engineering import split_features_target
+
     return split_features_target(engineered_features)
 
 

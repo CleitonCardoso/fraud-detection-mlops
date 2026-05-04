@@ -1,10 +1,12 @@
 """FastAPI application for the fraud detection MLOps system."""
+
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -24,21 +26,26 @@ from src.monitoring.metrics import (
 )
 from src.security.guardrails import InputGuardrail, OutputGuardrail
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 input_guard = InputGuardrail()
 output_guard = OutputGuardrail()
 
 _model = None
+_scalers: dict | None = None
 
 FRAUD_THRESHOLD = 0.5
 
 
 def _load_model() -> None:
-    global _model
+    global _model, _scalers
     try:
-        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_tracking_uri(
+            os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        )
         run = mlflow.search_runs(
             experiment_names=[os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection")],
             filter_string="tags.model_name = 'fraud_detector_rf'",
@@ -52,13 +59,27 @@ def _load_model() -> None:
     except Exception as e:
         logger.warning("Modelo não disponível no Registry: %s — usando fallback", e)
         _model = None
+
+    scalers_path = Path("data/processed/scalers.pkl")
+    if scalers_path.exists():
+        _scalers = joblib.load(scalers_path)
+        logger.info("Scalers carregados de %s", scalers_path)
+    else:
+        _scalers = None
+        logger.warning(
+            "Scalers não encontrados em %s — feature engineering vai re-fittar a cada request",
+            scalers_path,
+        )
+
     _seed_drift_metrics()
 
 
 def _seed_drift_metrics() -> None:
     try:
         cfg = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())
-        features = cfg.get("drift", {}).get("features_to_monitor", ["Amount_scaled", "V14", "Hour"])
+        features = cfg.get("drift", {}).get(
+            "features_to_monitor", ["Amount_scaled", "V14", "Hour"]
+        )
     except Exception:
         features = ["Amount_scaled", "V14", "Hour"]
     for feature in features:
@@ -82,6 +103,7 @@ app.mount("/metrics/", make_asgi_app())
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────
+
 
 class TransactionRequest(BaseModel):
     Time: float = Field(..., description="Seconds elapsed since first transaction")
@@ -115,7 +137,9 @@ class TransactionRequest(BaseModel):
     V27: float = 0.0
     V28: float = 0.0
 
-    model_config = {"json_schema_extra": {"example": {"Time": 9800.0, "Amount": 850.0, "V14": -6.5}}}
+    model_config = {
+        "json_schema_extra": {"example": {"Time": 9800.0, "Amount": 850.0, "V14": -6.5}}
+    }
 
 
 class PredictResponse(BaseModel):
@@ -136,6 +160,7 @@ class AgentResponse(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────────────────────────
 
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "model_loaded": _model is not None}
@@ -148,10 +173,15 @@ def predict(request: TransactionRequest) -> PredictResponse:
     start = time.perf_counter()
 
     if _model is None:
-        raise HTTPException(status_code=503, detail="Modelo não disponível. Execute make train.")
+        raise HTTPException(
+            status_code=503, detail="Modelo não disponível. Execute make train."
+        )
 
     try:
-        features = compute_features(pd.DataFrame([request.model_dump()])).drop(columns=["Class"], errors="ignore")
+        features, _ = compute_features(
+            pd.DataFrame([request.model_dump()]), scalers=_scalers
+        )
+        features = features.drop(columns=["Class"], errors="ignore")
         score = float(_model.predict_proba(features)[0][1])
     except Exception as e:
         request_counter.labels(endpoint="/predict", status="error").inc()
@@ -161,7 +191,12 @@ def predict(request: TransactionRequest) -> PredictResponse:
     prediction_latency.observe(elapsed)
     fraud_score.observe(score)
     request_counter.labels(endpoint="/predict", status="ok").inc()
-    logger.info("Predição: score=%.4f label=%s latency=%.3fs", score, "fraude" if score >= FRAUD_THRESHOLD else "legítima", elapsed)
+    logger.info(
+        "Predição: score=%.4f label=%s latency=%.3fs",
+        score,
+        "fraude" if score >= FRAUD_THRESHOLD else "legítima",
+        elapsed,
+    )
 
     return PredictResponse(
         fraud_score=round(score, 4),
@@ -183,7 +218,9 @@ def agent_query(request: AgentRequest) -> AgentResponse:
 
     start = time.perf_counter()
     try:
-        result = agent_query_fn(input_guard.sanitize(request.query), model_name=request.model_name)
+        result = agent_query_fn(
+            input_guard.sanitize(request.query), model_name=request.model_name
+        )
     except Exception as e:
         request_counter.labels(endpoint="/agent/query", status="error").inc()
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -193,4 +230,6 @@ def agent_query(request: AgentRequest) -> AgentResponse:
     request_counter.labels(endpoint="/agent/query", status="ok").inc()
     logger.info("Agent query concluída em %.2fs com %d steps", elapsed, result["steps"])
 
-    return AgentResponse(answer=output_guard.sanitize(result["answer"]), steps=result["steps"])
+    return AgentResponse(
+        answer=output_guard.sanitize(result["answer"]), steps=result["steps"]
+    )
