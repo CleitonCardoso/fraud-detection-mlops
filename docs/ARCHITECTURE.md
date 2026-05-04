@@ -17,35 +17,35 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph DATA ["Data Ingestion & Feature Engineering"]
         direction TB
-        CSV["creditcard.csv\n(Kaggle / local)"]:::data
-        DVC["DVC\n(data versioning + md5 hash)"]:::data
-        FE["compute_features()\n(feature_engineering.py)"]:::data
-        FS["Feature Store\n(feature_store.parquet)"]:::data
+        CSV["creditcard.csv<br/>(Kaggle / local)"]:::data
+        DVC["DVC<br/>(data versioning + md5 hash)"]:::data
+        FE["compute_features()<br/>(feature_engineering.py)"]:::data
+        FS["Feature Store<br/>(feature_store.parquet)"]:::data
         CSV --> DVC --> FE --> FS
     end
 
     %% ════════════════════════════════════════════════════════════════════
     subgraph TRAINING ["Training Pipeline  (train.py)"]
         direction TB
-        LOAD["Load raw CSV\n+ DVC hash tag"]:::training
-        FEAT["Feature Engineering\n+ upsert_features()"]:::training
-        SPLIT["Train / Test split\n(get_splits)"]:::training
+        LOAD["Load raw CSV<br/>+ DVC hash tag"]:::training
+        FEAT["Feature Engineering<br/>+ upsert_features()"]:::training
+        SPLIT["Train / Test split<br/>(get_splits)"]:::training
 
         subgraph MODELS ["Model Training"]
             direction LR
-            LR_MODEL["Logistic Regression\n(fraud_detector_lr)"]:::training
-            RF_MODEL["Random Forest\n(fraud_detector_rf)"]:::training
-            MLP_MODEL["PyTorch MLP\n(fraud_detector_mlp)\n[optional — torch required]"]:::training
+            LR_MODEL["Logistic Regression<br/>(fraud_detector_lr)"]:::training
+            RF_MODEL["Random Forest<br/>(fraud_detector_rf)"]:::training
+            MLP_MODEL["PyTorch MLP<br/>(fraud_detector_mlp)<br/>[optional — torch required]"]:::training
         end
 
-        MLFLOW_LOG["MLflow: log_params\nlog_metrics + log_model\n(git_sha, dvc_hash, risk tags)"]:::training
+        MLFLOW_LOG["MLflow: log_params<br/>log_metrics + log_model<br/>(git_sha, dvc_hash, risk tags)"]:::training
 
         subgraph CHAMP ["Champion-Challenger"]
             direction TB
-            GET_CHAMP["Get @Production AUC\n(MLflow Registry)"]:::training
+            GET_CHAMP["Get @Production AUC<br/>(MLflow Registry)"]:::training
             DELTA["AUC delta >= 0.005?"]:::training
-            PROMOTE["Set alias @Production\n(latest version)"]:::training
-            REJECT["Challenger rejected\n(delta insufficient)"]:::training
+            PROMOTE["Set alias @Production<br/>(latest version)"]:::training
+            REJECT["Challenger rejected<br/>(delta insufficient)"]:::training
             GET_CHAMP --> DELTA
             DELTA -->|yes| PROMOTE
             DELTA -->|no| REJECT
@@ -57,29 +57,29 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph REGISTRY ["MLflow Model Registry"]
         direction TB
-        REG_LR["fraud_detector_lr\n(versions)"]:::training
-        REG_RF["fraud_detector_rf\n@Production alias"]:::training
-        REG_MLP["fraud_detector_mlp\n(versions)"]:::training
+        REG_LR["fraud_detector_lr<br/>(versions)"]:::training
+        REG_RF["fraud_detector_rf<br/>@Production alias"]:::training
+        REG_MLP["fraud_detector_mlp<br/>(versions)"]:::training
     end
 
     %% ════════════════════════════════════════════════════════════════════
     subgraph SERVING ["Serving  (FastAPI — app.py)"]
         direction TB
-        LOAD_MODEL["lifespan: load_model()\nfrom models:/fraud_detector_rf@Production"]:::serving
+        LOAD_MODEL["lifespan: load_model()<br/>from models:/fraud_detector_rf@Production"]:::serving
         HEALTH["GET /health"]:::serving
         PREDICT_EP["POST /predict"]:::serving
         AGENT_EP["POST /agent/query"]:::serving
 
         subgraph PREDICT_FLOW ["Prediction Flow"]
             direction TB
-            P_FEAT["compute_features()\n(feature_engineering)"]:::serving
+            P_FEAT["compute_features()<br/>(feature_engineering)"]:::serving
             P_PROBA["model.predict_proba()"]:::serving
             P_THRESH["score >= 0.5?"]:::serving
-            P_RESP["PredictResponse\n{fraud_score, label}"]:::serving
+            P_RESP["PredictResponse<br/>{fraud_score, label}"]:::serving
             P_FEAT --> P_PROBA --> P_THRESH --> P_RESP
         end
 
-        PROM_METRICS["/metrics/\n(Prometheus ASGI app)"]:::monitoring
+        PROM_METRICS["/metrics/<br/>(Prometheus ASGI app)"]:::monitoring
 
         LOAD_MODEL --> PREDICT_EP
         PREDICT_EP --> PREDICT_FLOW
@@ -88,32 +88,32 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph AGENT ["Agent Flow  (react_agent.py + rag_pipeline.py)"]
         direction TB
-        IN_GUARD["InputGuardrail\n(validate + sanitize\nblocks prompt injection → HTTP 400)"]:::agent
-        REACT["ReAct Agent\n(LangGraph create_react_agent)"]:::agent
+        IN_GUARD["InputGuardrail<br/>(validate + sanitize<br/>blocks prompt injection → HTTP 400)"]:::agent
+        REACT["ReAct Agent<br/>(LangGraph create_react_agent)"]:::agent
 
         subgraph LLM_BACK ["LLM Backend"]
             direction LR
-            OLLAMA["ChatOllama\n(llama3.2:3b — local)"]:::agent
-            OPENAI["ChatOpenAI\n(gpt-4o-mini — fallback)"]:::agent
+            OLLAMA["ChatOllama<br/>(llama3.2:3b — local)"]:::agent
+            OPENAI["ChatOpenAI<br/>(gpt-4o-mini — fallback)"]:::agent
         end
 
         subgraph TOOLS ["Agent Tools"]
             direction TB
-            TOOL_PRED["fraud_predictor\n(calls /predict)"]:::agent
-            TOOL_LOOK["transaction_lookup\n(feature store query)"]:::agent
-            TOOL_DRIFT["drift_report\n(reads drift_status.json)"]:::agent
+            TOOL_PRED["fraud_predictor<br/>(calls /predict)"]:::agent
+            TOOL_LOOK["transaction_lookup<br/>(feature store query)"]:::agent
+            TOOL_DRIFT["drift_report<br/>(reads drift_status.json)"]:::agent
         end
 
         subgraph RAG ["RAG Pipeline"]
             direction TB
-            FAISS_LOAD["load_index()\n(FAISS from disk)"]:::agent
-            EMBED["Embeddings\n(nomic-embed-text / OpenAI)"]:::agent
-            RETRIEVE["similarity_search(k=3)\n(fraud knowledge base)"]:::agent
+            FAISS_LOAD["load_index()<br/>(FAISS from disk)"]:::agent
+            EMBED["Embeddings<br/>(nomic-embed-text / OpenAI)"]:::agent
+            RETRIEVE["similarity_search(k=3)<br/>(fraud knowledge base)"]:::agent
             FAISS_LOAD --> EMBED --> RETRIEVE
         end
 
-        OUT_GUARD["OutputGuardrail\n(sanitize response)"]:::agent
-        LANGFUSE["Langfuse\n(LLM telemetry: tokens,\nlatency, tool calls)"]:::agent
+        OUT_GUARD["OutputGuardrail<br/>(sanitize response)"]:::agent
+        LANGFUSE["Langfuse<br/>(LLM telemetry: tokens,<br/>latency, tool calls)"]:::agent
 
         IN_GUARD --> REACT
         REACT <--> LLM_BACK
@@ -126,9 +126,9 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph MONITORING ["Monitoring Stack"]
         direction TB
-        PROM["Prometheus\n(:9090)\nScrapes /metrics/ every 15s"]:::monitoring
-        GRAFANA["Grafana\n(:3000)\n11 panels, 4 alerts"]:::monitoring
-        ALERTS["Alert Rules\n(prometheus_alerts.yml)\nhigh fraud rate | high latency\ndrift warning | model AUC drop"]:::monitoring
+        PROM["Prometheus<br/>(:9090)<br/>Scrapes /metrics/ every 15s"]:::monitoring
+        GRAFANA["Grafana<br/>(:3000)<br/>11 panels, 4 alerts"]:::monitoring
+        ALERTS["Alert Rules<br/>(prometheus_alerts.yml)<br/>high fraud rate | high latency<br/>drift warning | model AUC drop"]:::monitoring
         PROM --> GRAFANA
         PROM --> ALERTS
     end
@@ -136,16 +136,16 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph DRIFT ["Drift Detection  (drift.py)"]
         direction TB
-        EVIDENTLY["Evidently DataDriftPreset\n(reference vs current)"]:::monitoring
-        PSI["compute_psi()\nper feature\n(Amount_scaled, V14, Hour, Amount_log1p)"]:::monitoring
-        PSI_GAUGE["drift_psi_gauge\n(Prometheus)"]:::monitoring
-        DRIFT_HTML["drift_report.html\n(artifact)"]:::monitoring
-        DRIFT_JSON["drift_status.json\n{retrain_needed, psi, thresholds}"]:::monitoring
-        DRIFT_MFLOW["MLflow run: psi_* metrics\n+ retrain_needed flag"]:::monitoring
+        EVIDENTLY["Evidently DataDriftPreset<br/>(reference vs current)"]:::monitoring
+        PSI["compute_psi()<br/>per feature<br/>(Amount_scaled, V14, Hour, Amount_log1p)"]:::monitoring
+        PSI_GAUGE["drift_psi_gauge<br/>(Prometheus)"]:::monitoring
+        DRIFT_HTML["drift_report.html<br/>(artifact)"]:::monitoring
+        DRIFT_JSON["drift_status.json<br/>{retrain_needed, psi, thresholds}"]:::monitoring
+        DRIFT_MFLOW["MLflow run: psi_* metrics<br/>+ retrain_needed flag"]:::monitoring
 
         PSI_DECISION{"PSI thresholds"}:::monitoring
-        WARN_LOG["WARNING log\n(PSI > 0.1)"]:::monitoring
-        RETRAIN_FLAG["retrain_needed = true\n(PSI > 0.2)"]:::monitoring
+        WARN_LOG["WARNING log<br/>(PSI > 0.1)"]:::monitoring
+        RETRAIN_FLAG["retrain_needed = true<br/>(PSI > 0.2)"]:::monitoring
 
         EVIDENTLY --> PSI --> PSI_GAUGE
         EVIDENTLY --> DRIFT_HTML
@@ -159,11 +159,11 @@ flowchart TD
     %% ════════════════════════════════════════════════════════════════════
     subgraph RETRAIN_LOOP ["Retraining Loop  (retrain.yml)"]
         direction TB
-        SCHEDULE["Cron: daily 02:00 UTC\nor workflow_dispatch"]:::cicd
-        DRIFT_CHECK["Job: drift-check\npython src/monitoring/drift.py"]:::cicd
-        READ_STATUS["Read drift_status.json\n→ retrain_needed output"]:::cicd
-        HUMAN_GATE["Environment: production\n(manual approval required)"]:::cicd
-        RETRAIN_JOB["Job: retrain\npython src/models/train.py\n(champion-challenger)"]:::cicd
+        SCHEDULE["Cron: daily 02:00 UTC<br/>or workflow_dispatch"]:::cicd
+        DRIFT_CHECK["Job: drift-check<br/>python src/monitoring/drift.py"]:::cicd
+        READ_STATUS["Read drift_status.json<br/>→ retrain_needed output"]:::cicd
+        HUMAN_GATE["Environment: production<br/>(manual approval required)"]:::cicd
+        RETRAIN_JOB["Job: retrain<br/>python src/models/train.py<br/>(champion-challenger)"]:::cicd
 
         SCHEDULE --> DRIFT_CHECK --> READ_STATUS
         READ_STATUS -->|"retrain_needed == true"| HUMAN_GATE
@@ -179,14 +179,14 @@ flowchart TD
             MYPY["mypy type-check"]:::cicd
             BANDIT["bandit security scan"]:::cicd
             PYTEST["pytest --cov >= 60%"]:::cicd
-            DOCKER_BUILD["Docker build\n(no push)"]:::cicd
+            DOCKER_BUILD["Docker build<br/>(no push)"]:::cicd
             LINT --> MYPY --> BANDIT --> PYTEST --> DOCKER_BUILD
         end
 
         subgraph CD_PIPE ["CD  (cd.yml) — on push to main"]
             direction TB
             GHCR_LOGIN["Login to GHCR"]:::cicd
-            DOCKER_PUSH["docker build-push\nfraud-api:latest\nfraud-api:{sha}"]:::cicd
+            DOCKER_PUSH["docker build-push<br/>fraud-api:latest<br/>fraud-api:{sha}"]:::cicd
             GHCR_LOGIN --> DOCKER_PUSH
         end
     end
@@ -200,18 +200,18 @@ flowchart TD
     REG_RF --> LOAD_MODEL
     REG_MLP -.-> MLFLOW_LOG
 
-    PREDICT_FLOW -->|"prediction_latency\nfraud_score\nrequest_counter"| PROM_METRICS
+    PREDICT_FLOW -->|"prediction_latency<br/>fraud_score<br/>request_counter"| PROM_METRICS
     PROM_METRICS --> PROM
 
     AGENT_EP --> IN_GUARD
     OUT_GUARD --> AGENT_EP
-    AGENT_EP -->|"agent_latency\nrequest_counter"| PROM_METRICS
+    AGENT_EP -->|"agent_latency<br/>request_counter"| PROM_METRICS
 
     DRIFT_JSON -->|"read by drift_report tool"| TOOL_DRIFT
     PSI_GAUGE --> PROM
 
     DRIFT_JSON --> READ_STATUS
-    RETRAIN_JOB -->|"runs train.py\n→ new Registry version"| REGISTRY
+    RETRAIN_JOB -->|"runs train.py<br/>→ new Registry version"| REGISTRY
 
     CI_PIPE -->|"on push to main"| CD_PIPE
 ```
