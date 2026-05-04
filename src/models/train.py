@@ -164,7 +164,25 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     logger.info("Scalers salvos em %s", scalers_path)
 
     X, y = split_features_target(df)
-    X_train, X_test, y_train, y_test = get_splits(X, y)
+    X_train, X_test, y_train, y_test = get_splits(X, y, time_series=df_raw["Time"])
+
+    train_time_window = (
+        float(df_raw.loc[X_train.index, "Time"].min()),
+        float(df_raw.loc[X_train.index, "Time"].max()),
+    )
+    test_time_window = (
+        float(df_raw.loc[X_test.index, "Time"].min()),
+        float(df_raw.loc[X_test.index, "Time"].max()),
+    )
+    logger.info("Split temporal: train=%s test=%s", train_time_window, test_time_window)
+
+    split_metadata = {
+        "split_strategy": "temporal",
+        "train_time_min": train_time_window[0],
+        "train_time_max": train_time_window[1],
+        "test_time_min": test_time_window[0],
+        "test_time_max": test_time_window[1],
+    }
 
     git_sha = _get_git_sha()
     dvc_hash = _get_dvc_hash(data_path)
@@ -180,6 +198,7 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
             "model_type": "logistic_regression",
             "class_weight": "balanced",
             "max_iter": 1000,
+            **split_metadata,
         },
         metrics=evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), y_proba),
         tags=_base_tags("fraud_detector_lr", dvc_hash, owner, git_sha),
@@ -200,6 +219,7 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
             "model_type": "random_forest",
             "n_estimators": 100,
             "class_weight": "balanced",
+            **split_metadata,
         },
         metrics=rf_metrics,
         tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
@@ -228,6 +248,7 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
                 "batch_size": 512,
                 "lr": 1e-3,
                 "hidden_dims": "[128,64,32]",
+                **split_metadata,
             },
             metrics=evaluate(
                 y_test,

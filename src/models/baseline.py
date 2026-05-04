@@ -1,4 +1,5 @@
 """Sklearn baseline models for fraud detection."""
+
 import logging
 
 import pandas as pd
@@ -10,7 +11,9 @@ from sklearn.model_selection import train_test_split
 logger = logging.getLogger(__name__)
 
 
-def evaluate(y_true: pd.Series, y_pred: pd.Series, y_proba: pd.Series) -> dict[str, float]:
+def evaluate(
+    y_true: pd.Series, y_pred: pd.Series, y_proba: pd.Series
+) -> dict[str, float]:
     """Compute standard classification metrics.
 
     Args:
@@ -79,16 +82,30 @@ def get_splits(
     y: pd.Series,
     test_size: float = 0.2,
     random_state: int = 42,
+    time_series: pd.Series | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Stratified train/test split preserving fraud ratio.
+    """Train/test split.
+
+    When ``time_series`` is provided, splits chronologically (last ``test_size``
+    fraction goes to test) — required for fraud detection to avoid temporal leakage
+    between coordinated bursts. Otherwise falls back to stratified random split.
 
     Args:
         X: Feature matrix.
         y: Target series.
         test_size: Fraction of data for testing.
-        random_state: Reproducibility seed.
+        random_state: Reproducibility seed (random split only).
+        time_series: Optional temporal column (e.g. df_raw["Time"]) aligned with X's index.
 
     Returns:
         Tuple (X_train, X_test, y_train, y_test).
     """
-    return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)  # type: ignore[no-any-return]
+    if time_series is not None:
+        order = time_series.sort_values().index
+        n_test = max(1, int(len(order) * test_size))
+        train_idx = order[:-n_test]
+        test_idx = order[-n_test:]
+        return X.loc[train_idx], X.loc[test_idx], y.loc[train_idx], y.loc[test_idx]
+    return train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )  # type: ignore[no-any-return]
