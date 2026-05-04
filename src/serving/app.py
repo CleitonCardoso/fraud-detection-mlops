@@ -11,7 +11,7 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ from src.monitoring.metrics import (
     request_counter,
 )
 from src.security.guardrails import InputGuardrail, OutputGuardrail
+from src.serving.auth import verify_api_key
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s"
@@ -166,7 +167,9 @@ def health() -> dict:
     return {"status": "ok", "model_loaded": _model is not None}
 
 
-@app.post("/predict", response_model=PredictResponse)
+@app.post(
+    "/predict", response_model=PredictResponse, dependencies=[Depends(verify_api_key)]
+)
 def predict(request: TransactionRequest) -> PredictResponse:
     """Run fraud prediction on a single transaction."""
     request_counter.labels(endpoint="/predict", status="started").inc()
@@ -204,7 +207,9 @@ def predict(request: TransactionRequest) -> PredictResponse:
     )
 
 
-@app.post("/agent/query", response_model=AgentResponse)
+@app.post(
+    "/agent/query", response_model=AgentResponse, dependencies=[Depends(verify_api_key)]
+)
 def agent_query(request: AgentRequest) -> AgentResponse:
     """Query the ReAct fraud analysis agent."""
     from src.agent.react_agent import query as agent_query_fn
