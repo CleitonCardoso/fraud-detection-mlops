@@ -1,5 +1,7 @@
 """FastAPI application for the fraud detection MLOps system."""
+import json
 import logging
+import math
 import os
 import time
 from contextlib import asynccontextmanager
@@ -9,15 +11,13 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 import yaml
-import math
-
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.features.feature_engineering import compute_features
+from src.features.feature_engineering import ScalerParams, compute_features
 from src.monitoring.metrics import (
     agent_latency,
     drift_psi_gauge,
@@ -26,8 +26,8 @@ from src.monitoring.metrics import (
     prediction_latency,
     request_counter,
 )
-from src.features.feature_engineering import ScalerParams
 from src.security.guardrails import InputGuardrail, OutputGuardrail
+from src.serving.auth import verify_api_key
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -46,7 +46,6 @@ _DEFAULT_THRESHOLD = 0.25
 def _load_scalers() -> None:
     global _scalers
     try:
-        import json
         raw = json.loads(Path(_SCALERS_PATH).read_text())
         _scalers = ScalerParams(**raw)
         logger.info("Scaler params carregados de %s", _SCALERS_PATH)
@@ -209,7 +208,7 @@ def health() -> dict:
     return {"status": "ok", "model_loaded": _model is not None}
 
 
-@app.post("/predict", response_model=PredictResponse)
+@app.post("/predict", response_model=PredictResponse, dependencies=[Depends(verify_api_key)])
 def predict(request: TransactionRequest) -> PredictResponse:
     """Run fraud prediction on a single transaction."""
     request_counter.labels(endpoint="/predict", status="started").inc()
@@ -240,7 +239,7 @@ def predict(request: TransactionRequest) -> PredictResponse:
     )
 
 
-@app.post("/agent/query", response_model=AgentResponse)
+@app.post("/agent/query", response_model=AgentResponse, dependencies=[Depends(verify_api_key)])
 def agent_query(request: AgentRequest) -> AgentResponse:
     """Query the ReAct fraud analysis agent."""
     from src.agent.react_agent import query as agent_query_fn

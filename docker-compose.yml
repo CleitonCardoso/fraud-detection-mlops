@@ -6,6 +6,8 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - FRAUD_API_KEY=${FRAUD_API_KEY:-}
     depends_on:
       - mlflow
     volumes:

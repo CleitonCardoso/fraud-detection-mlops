@@ -1,7 +1,13 @@
 """Tests for feature engineering — schema contracts and invariants."""
+
 import pandas as pd
 
-from src.features.feature_engineering import ScalerParams, compute_features, fit_scalers, split_features_target
+from src.features.feature_engineering import (
+    ScalerParams,
+    compute_features,
+    fit_scalers,
+    split_features_target,
+)
 
 
 def test_output_has_expected_columns(raw_transactions: pd.DataFrame) -> None:

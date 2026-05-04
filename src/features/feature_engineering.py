@@ -1,4 +1,5 @@
 """Feature engineering pipeline for credit card fraud detection."""
+
 import logging
 from dataclasses import asdict, dataclass
 
@@ -71,11 +72,17 @@ def compute_features(df: pd.DataFrame, scalers: ScalerParams | None = None) -> p
 
     FEATURE_SCHEMA.validate(result.drop(columns=["Class"], errors="ignore"))
 
-    logger.info("Feature engineering concluído: %d registros, %d features", len(result), result.shape[1])
+    logger.info(
+        "Feature engineering concluído: %d registros, %d features",
+        len(result),
+        result.shape[1],
+    )
     return result
 
 
-def split_features_target(df: pd.DataFrame, target_col: str = "Class") -> tuple[pd.DataFrame, pd.Series]:
+def split_features_target(
+    df: pd.DataFrame, target_col: str = "Class"
+) -> tuple[pd.DataFrame, pd.Series]:
     """Split DataFrame into features and target series.
 
     Args:
