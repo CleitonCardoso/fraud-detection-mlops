@@ -11,7 +11,6 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 import yaml
-
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse

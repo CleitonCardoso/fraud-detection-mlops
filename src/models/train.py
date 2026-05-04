@@ -13,7 +13,11 @@ import mlflow.sklearn
 import pandas as pd
 import yaml
 
-from src.features.feature_engineering import compute_features, fit_scalers, split_features_target
+from src.features.feature_engineering import (
+    compute_features,
+    fit_scalers,
+    split_features_target,
+)
 from src.features.feature_store import upsert_features
 from src.models.baseline import (
     evaluate,

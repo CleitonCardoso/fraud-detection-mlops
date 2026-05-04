@@ -1,11 +1,11 @@
 """Custom tools for the fraud detection ReAct agent."""
 
 import json
+import json as _json_module
 import logging
 from functools import lru_cache
 from pathlib import Path
 
-import json as _json_module
 import mlflow
 import mlflow.sklearn
 import pandas as pd
