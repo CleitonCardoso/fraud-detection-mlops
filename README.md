@@ -11,19 +11,24 @@ cp .env.example .env          # fill in your keys
 make setup                    # install dependencies
 make data                     # download dataset (requires Kaggle account)
 make train                    # train models, log to MLflow
-make serve                    # start all services via docker-compose
+docker compose up -d          # start all services (Prometheus, Grafana, Langfuse, LocalStack)
+make localstack-init          # create S3 bucket in LocalStack
+make data-push                # version feature store → LocalStack S3 via DVC
 make test                     # run test suite
 ```
 
 ## Services
 
-| Service | URL | Description |
+| Service | URL | Credentials |
 |---|---|---|
-| API | http://localhost:8000/docs | FastAPI + Swagger UI |
-| MLflow | http://localhost:5000 | Experiment tracking + Model Registry |
-| Grafana | http://localhost:3000 | Monitoring dashboard (admin/admin) |
-| Langfuse | http://localhost:3001 | LLM telemetry |
-| Prometheus | http://localhost:9090 | Metrics scraping |
+| API | http://localhost:8000/docs | — |
+| MLflow | http://localhost:5000 | — |
+| Grafana | http://localhost:3000 | admin / datathon |
+| Langfuse | http://localhost:3001 | — |
+| Prometheus | http://localhost:9090 | — |
+| LocalStack (S3) | http://localhost:4566 | key=test / secret=test |
+
+> **LocalStack persistence:** the `localstack_data` Docker volume survives `docker compose stop/up` but is wiped by `docker compose down -v`. On a fresh machine, re-run `make localstack-init && make data-push`. The feature store can always be regenerated from scratch with `make train`.
 
 ## Architecture
 
