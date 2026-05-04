@@ -68,10 +68,11 @@ def _log_experiment(
     registered_model_name: str,
 ) -> None:
     """Log a single training run to MLflow — params, metrics, tags, and model artifact."""
-    with mlflow.start_run(run_name=run_name):
+    with mlflow.start_run(run_name=run_name) as active_run:
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)
-        mlflow.set_tags(tags)
+        run_tags = {**tags, "model_version": active_run.info.run_id[:12]}
+        mlflow.set_tags(run_tags)
         log_model_fn(model, "model", registered_model_name=registered_model_name)
         logger.info("%s — AUC: %.4f  F1: %.4f", run_name, metrics["auc"], metrics["f1"])
 
@@ -79,7 +80,6 @@ def _log_experiment(
 def _base_tags(model_name: str, dvc_hash: str, owner: str, git_sha: str) -> dict:
     return {
         "model_name": model_name,
-        "model_version": "1.0.0",
         "model_type": "classification",
         "training_data_version": dvc_hash,
         "owner": owner,
