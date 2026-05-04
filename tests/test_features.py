@@ -58,6 +58,7 @@ def test_target_is_binary(engineered_features: pd.DataFrame) -> None:
 
 # ── ScalerParams and fit_scalers ─────────────────────────────────────────────
 
+
 def test_fit_scalers_returns_scaler_params(raw_transactions: pd.DataFrame) -> None:
     scalers = fit_scalers(raw_transactions)
     assert isinstance(scalers, ScalerParams)
@@ -67,12 +68,21 @@ def test_fit_scalers_returns_scaler_params(raw_transactions: pd.DataFrame) -> No
 
 def test_fit_scalers_mean_within_data_range(raw_transactions: pd.DataFrame) -> None:
     scalers = fit_scalers(raw_transactions)
-    assert raw_transactions["Amount"].min() <= scalers.amount_mean <= raw_transactions["Amount"].max()
-    assert raw_transactions["Time"].min() <= scalers.time_mean <= raw_transactions["Time"].max()
+    assert (
+        raw_transactions["Amount"].min()
+        <= scalers.amount_mean
+        <= raw_transactions["Amount"].max()
+    )
+    assert (
+        raw_transactions["Time"].min()
+        <= scalers.time_mean
+        <= raw_transactions["Time"].max()
+    )
 
 
 def test_scaler_params_serializable(raw_transactions: pd.DataFrame) -> None:
     import json
+
     scalers = fit_scalers(raw_transactions)
     d = scalers.to_dict()
     restored = ScalerParams(**json.loads(json.dumps(d)))
@@ -80,7 +90,9 @@ def test_scaler_params_serializable(raw_transactions: pd.DataFrame) -> None:
     assert restored.amount_scale == scalers.amount_scale
 
 
-def test_compute_features_with_scalers_matches_known_normalization(raw_transactions: pd.DataFrame) -> None:
+def test_compute_features_with_scalers_matches_known_normalization(
+    raw_transactions: pd.DataFrame,
+) -> None:
     scalers = fit_scalers(raw_transactions)
     result = compute_features(raw_transactions, scalers=scalers)
     # Amount_scaled should be z-scored against training distribution, not always 0
@@ -89,14 +101,20 @@ def test_compute_features_with_scalers_matches_known_normalization(raw_transacti
 
 def test_compute_features_without_scalers_single_row_amount_scaled_is_zero() -> None:
     # Documents the known skew: single-row fit_transform produces 0
-    single = pd.DataFrame([{"Time": 9800.0, "Amount": 850.0, **{f"V{i}": 0.0 for i in range(1, 29)}}])
+    single = pd.DataFrame(
+        [{"Time": 9800.0, "Amount": 850.0, **{f"V{i}": 0.0 for i in range(1, 29)}}]
+    )
     result = compute_features(single)
     assert result["Amount_scaled"].iloc[0] == 0.0
 
 
-def test_compute_features_with_scalers_single_row_amount_scaled_is_nonzero(raw_transactions: pd.DataFrame) -> None:
+def test_compute_features_with_scalers_single_row_amount_scaled_is_nonzero(
+    raw_transactions: pd.DataFrame,
+) -> None:
     scalers = fit_scalers(raw_transactions)
-    single = pd.DataFrame([{"Time": 9800.0, "Amount": 850.0, **{f"V{i}": 0.0 for i in range(1, 29)}}])
+    single = pd.DataFrame(
+        [{"Time": 9800.0, "Amount": 850.0, **{f"V{i}": 0.0 for i in range(1, 29)}}]
+    )
     result = compute_features(single, scalers=scalers)
     # With proper scalers, a large amount should produce a non-zero scaled value
     assert result["Amount_scaled"].iloc[0] != 0.0

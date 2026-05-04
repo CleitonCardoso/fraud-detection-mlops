@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScalerParams:
     """Mean and scale for Amount and Time, fitted on the full training set."""
+
     amount_mean: float
     amount_scale: float
     time_mean: float
@@ -34,6 +35,7 @@ def fit_scalers(df: pd.DataFrame) -> ScalerParams:
         time_scale=float(st.scale_[0]),
     )
 
+
 FEATURE_SCHEMA = DataFrameSchema(
     {
         "Amount_scaled": Column(float),
@@ -46,7 +48,9 @@ FEATURE_SCHEMA = DataFrameSchema(
 )
 
 
-def compute_features(df: pd.DataFrame, scalers: ScalerParams | None = None) -> pd.DataFrame:
+def compute_features(
+    df: pd.DataFrame, scalers: ScalerParams | None = None
+) -> pd.DataFrame:
     """Transform raw transaction data into model-ready features.
 
     Args:
@@ -60,8 +64,12 @@ def compute_features(df: pd.DataFrame, scalers: ScalerParams | None = None) -> p
     result = df.copy()
 
     if scalers is not None:
-        result["Amount_scaled"] = (result["Amount"] - scalers.amount_mean) / scalers.amount_scale
-        result["Time_scaled"] = (result["Time"] - scalers.time_mean) / scalers.time_scale
+        result["Amount_scaled"] = (
+            result["Amount"] - scalers.amount_mean
+        ) / scalers.amount_scale
+        result["Time_scaled"] = (
+            result["Time"] - scalers.time_mean
+        ) / scalers.time_scale
     else:
         result["Amount_scaled"] = StandardScaler().fit_transform(result[["Amount"]])
         result["Time_scaled"] = StandardScaler().fit_transform(result[["Time"]])

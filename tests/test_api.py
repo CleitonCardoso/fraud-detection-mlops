@@ -79,6 +79,7 @@ def test_metrics_endpoint_available():
 
 # ── API key authentication ───────────────────────────────────────────────────
 
+
 def test_predict_unauthorized_without_api_key(sample_transaction, api_key):
     response = client.post("/predict", json=sample_transaction)
     assert response.status_code == 401
@@ -132,6 +133,7 @@ def test_agent_query_unauthorized_without_api_key(api_key):
 
 # ── Input validation: schema enforcement ────────────────────────────────────
 
+
 def test_predict_rejects_negative_amount():
     response = client.post("/predict", json={"Time": 100.0, "Amount": -1.0})
     assert response.status_code == 422
@@ -153,7 +155,9 @@ def test_predict_rejects_missing_amount():
 
 
 def test_predict_rejects_extra_fields():
-    response = client.post("/predict", json={**_VALID, "card_number": "4111111111111111"})
+    response = client.post(
+        "/predict", json={**_VALID, "card_number": "4111111111111111"}
+    )
     assert response.status_code == 422
 
 
