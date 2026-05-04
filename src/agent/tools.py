@@ -5,7 +5,7 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
-import joblib
+import json as _json_module
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -49,13 +49,12 @@ def fraud_predictor(transaction_json: str) -> str:
             }
         )
 
-    from src.features.feature_engineering import compute_features
+    from src.features.feature_engineering import ScalerParams, compute_features
 
     try:
-        scalers_path = Path("data/processed/scalers.pkl")
-        scalers = joblib.load(scalers_path) if scalers_path.exists() else None
-        features, _ = compute_features(pd.DataFrame([transaction]), scalers=scalers)
-        features = features.drop(columns=["Class"], errors="ignore")
+        scalers_path = Path("data/processed/scalers.json")
+        scalers = ScalerParams(**_json_module.loads(scalers_path.read_text())) if scalers_path.exists() else None
+        features = compute_features(pd.DataFrame([transaction]), scalers=scalers).drop(columns=["Class"], errors="ignore")
     except Exception as e:
         return json.dumps({"error": f"Erro no feature engineering: {e}"})
 

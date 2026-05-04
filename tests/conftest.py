@@ -46,8 +46,7 @@ def engineered_features(raw_transactions: pd.DataFrame) -> pd.DataFrame:
     """Pre-computed features from raw transactions."""
     from src.features.feature_engineering import compute_features
 
-    df, _ = compute_features(raw_transactions)
-    return df
+    return compute_features(raw_transactions)
 
 
 @pytest.fixture

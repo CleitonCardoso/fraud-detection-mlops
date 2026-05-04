@@ -51,7 +51,7 @@ def test_stratified_split_preserves_fraud_ratio(feature_target_split):
 def test_temporal_split_no_leakage(raw_transactions):
     from src.features.feature_engineering import compute_features, split_features_target
 
-    df, _ = compute_features(raw_transactions)
+    df = compute_features(raw_transactions)
     X, y = split_features_target(df)
     time_series = raw_transactions["Time"]
 

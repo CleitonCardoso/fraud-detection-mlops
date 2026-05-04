@@ -11,6 +11,8 @@ from src.serving.app import app
 
 client = TestClient(app)
 
+_VALID = {"Time": 9800.0, "Amount": 150.0}
+
 
 @pytest.fixture
 def api_key(monkeypatch):
@@ -75,6 +77,8 @@ def test_metrics_endpoint_available():
     assert b"fraud_prediction_latency" in response.content
 
 
+# ── API key authentication ───────────────────────────────────────────────────
+
 def test_predict_unauthorized_without_api_key(sample_transaction, api_key):
     response = client.post("/predict", json=sample_transaction)
     assert response.status_code == 401
@@ -124,3 +128,64 @@ def test_metrics_remain_public_without_api_key(api_key):
 def test_agent_query_unauthorized_without_api_key(api_key):
     response = client.post("/agent/query", json={"query": "qual o threshold de PSI?"})
     assert response.status_code == 401
+
+
+# ── Input validation: schema enforcement ────────────────────────────────────
+
+def test_predict_rejects_negative_amount():
+    response = client.post("/predict", json={"Time": 100.0, "Amount": -1.0})
+    assert response.status_code == 422
+
+
+def test_predict_rejects_negative_time():
+    response = client.post("/predict", json={"Time": -1.0, "Amount": 100.0})
+    assert response.status_code == 422
+
+
+def test_predict_rejects_missing_time():
+    response = client.post("/predict", json={"Amount": 100.0})
+    assert response.status_code == 422
+
+
+def test_predict_rejects_missing_amount():
+    response = client.post("/predict", json={"Time": 100.0})
+    assert response.status_code == 422
+
+
+def test_predict_rejects_extra_fields():
+    response = client.post("/predict", json={**_VALID, "card_number": "4111111111111111"})
+    assert response.status_code == 422
+
+
+def test_predict_rejects_nan_amount():
+    # NaN is not valid JSON but Python's parser accepts it; the API must reject it
+    response = client.post(
+        "/predict",
+        content='{"Time": 100.0, "Amount": NaN}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+
+
+def test_predict_rejects_infinity_amount():
+    response = client.post(
+        "/predict",
+        content='{"Time": 100.0, "Amount": Infinity}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+
+
+def test_predict_rejects_null_v_field():
+    response = client.post("/predict", json={**_VALID, "V1": None})
+    assert response.status_code == 422
+
+
+def test_predict_error_response_does_not_leak_internals(sample_transaction):
+    mock_model = MagicMock()
+    mock_model.predict_proba.side_effect = RuntimeError("internal sklearn detail")
+    with patch("src.serving.app._model", mock_model):
+        response = client.post("/predict", json=sample_transaction)
+    assert response.status_code == 500
+    assert "sklearn" not in response.text
+    assert "internal" not in response.text.lower()

@@ -4,7 +4,7 @@
 
 Sistema MLOps completo para detecção de fraude em transações de cartão de crédito.
 Dataset: UCI Credit Card Fraud (284.807 transações, 0.17% fraude).
-Stack: FastAPI + MLflow + scikit-learn + LangGraph + FAISS + Prometheus + Grafana + Evidently.
+Stack: FastAPI + MLflow + scikit-learn + LangGraph + FAISS + Prometheus + Grafana + Evidently + LocalStack (S3).
 
 ## Estrutura de Diretórios
 
@@ -16,15 +16,19 @@ src/
   security/         guardrails.py (input/output), pii_detection.py (Presidio)
   serving/          app.py (FastAPI), Dockerfile
   agent/            react_agent.py (LangGraph), tools.py (3 tools), rag_pipeline.py (FAISS)
-evaluation/         ragas_eval.py, llm_judge.py, golden_set_builder.py
+evaluation/         ragas_eval.py, llm_judge.py, golden_set_builder.py, benchmark_configs.py
 tests/              pytest com cobertura >= 60%
 configs/            prometheus.yml, monitoring_config.yaml, grafana/
-docs/               MODEL_CARD.md, SYSTEM_CARD.md, LGPD_PLAN.md, OWASP_MAPPING.md, adr/
+docs/               MODEL_CARD.md, SYSTEM_CARD.md, LGPD_PLAN.md, OWASP_MAPPING.md, ARCHITECTURE.md, adr/
 notebooks/          01_eda.ipynb
+scripts/            build_features.py (DVC pipeline entry point)
 data/
   raw/              creditcard.csv (rastreado pelo DVC)
-  processed/        feature_store.parquet, faiss_index/, drift_report.html
+  processed/        feature_store.parquet, features.parquet, faiss_index/, drift_report.html
   golden_set/       golden_set.json (20 pares Q&A)
+.dvc/config         DVC remote → LocalStack S3 (s3://fraud-detection-features)
+dvc.yaml            Pipeline stages: features → train → drift
+dvc.lock            Hashes de todas as saídas do pipeline (commitado no git)
 ```
 
 ## Setup numa Máquina Nova
@@ -53,7 +57,11 @@ make train
 # Models → fraud_detector_rf → Aliases → adicionar "Production"
 
 # 7. Subir infraestrutura
-docker compose up -d   # Prometheus, Grafana, Langfuse
+docker compose up -d   # Prometheus, Grafana, Langfuse, LocalStack
+make localstack-init   # cria bucket S3 no LocalStack (necessário após cada docker compose down -v)
+
+# 7b. Versionar feature store no S3 local (opcional — pode regenerar com make train)
+make data-push         # dvc repro features + dvc push → LocalStack S3
 
 # 8. Iniciar API (com MLflow local)
 MLFLOW_TRACKING_URI=http://localhost:5000 PYTHONPATH=. \
@@ -73,27 +81,33 @@ PYTHONPATH=. python3 -c "from src.agent.rag_pipeline import build_index; build_i
 
 - **Modelos treinados:** RF (`@Production`) e LR registrados no MLflow local (`mlruns/`)
 - **Dados:** `data/raw/creditcard.csv` rastreado pelo DVC (284.807 linhas)
-- **Feature store:** `data/processed/feature_store.parquet` gerado
+- **Feature store:** `data/processed/feature_store.parquet` gerado e versionado no LocalStack S3
 - **FAISS index:** `data/processed/faiss_index/` construído com nomic-embed-text
 - **Drift report:** `data/processed/drift_report.html` gerado com Evidently
 - **Testes:** 42 passando, 1 skip (torch), cobertura 70.7%
 - **Grafana:** provisioned com 11 painéis, 4 alertas (admin/datathon)
 - **Ollama:** `llama3.2:3b` + `nomic-embed-text` instalados localmente
+- **LocalStack:** rodando como serviço Docker, bucket `fraud-detection-features` criado, feature store versionado via DVC
 
 > ⚠️ `mlruns/` não está no git — numa máquina nova é preciso rodar `make train` novamente e promover o alias `@Production` no MLflow UI.
+>
+> ⚠️ **LocalStack é ephemeral por padrão.** O volume Docker (`localstack_data`) persiste entre `docker compose stop/up`, mas é apagado com `docker compose down -v`. Numa máquina nova, rodar `make localstack-init` recria o bucket e `make data-push` re-sobe os artefatos. Alternativa: `make train` sempre regenera o feature store do zero a partir do CSV estático.
 
 ## Comandos Essenciais
 
 ```bash
-make setup          # instala dependências
-make data           # baixa dataset via Kaggle
-make train          # treina LR + RF + MLP, loga no MLflow
-make test           # pytest com cobertura >= 60%
-make serve          # inicia FastAPI em localhost:8000
-make drift          # roda Evidently e atualiza PSI no Prometheus
-make eval           # RAGAS + LLM-judge contra o golden set
-make lint           # ruff + mypy + bandit
-docker compose up -d  # sobe todos os serviços
+make setup            # instala dependências
+make data             # baixa dataset via Kaggle
+make train            # treina LR + RF + MLP, loga no MLflow
+make test             # pytest com cobertura >= 60%
+make serve            # inicia FastAPI em localhost:8000
+make drift            # roda Evidently e atualiza PSI no Prometheus
+make eval             # RAGAS + LLM-judge contra o golden set
+make lint             # ruff + mypy + bandit
+docker compose up -d  # sobe todos os serviços (incl. LocalStack)
+make localstack-init  # cria bucket S3 no LocalStack
+make data-push        # dvc repro features + dvc push → LocalStack S3
+make data-pull        # dvc pull ← LocalStack S3
 ```
 
 ## Serviços e Portas
@@ -107,6 +121,7 @@ docker compose up -d  # sobe todos os serviços
 | Grafana | http://localhost:3000 | admin / datathon |
 | Langfuse | http://localhost:3001 | — |
 | Ollama | http://localhost:11434 | — |
+| LocalStack (S3) | http://localhost:4566 | key=test / secret=test |
 
 ## Modelos em Produção
 
@@ -153,7 +168,7 @@ OWNER_EMAIL=your@email.com
 - Mocks apenas em boundaries externas (MLflow, HTTP) — nunca mockar lógica de negócio
 
 ### Git
-- Commits locais são livres — **NUNCA fazer push** para o remoto neste repositório
+- Commits locais são livres; push para `https://github.com/CleitonCardoso/fraud-detection-mlops` é permitido
 - Mensagens de commit em inglês, seguindo conventional commits
 
 ### MLflow

@@ -1,5 +1,5 @@
 """Training pipeline with MLflow tracking and Model Registry."""
-
+import json
 import logging
 import os
 import subprocess
@@ -7,17 +7,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import joblib
 import mlflow
 import mlflow.pytorch
 import mlflow.sklearn
 import pandas as pd
 import yaml
 
-from src.features.feature_engineering import compute_features, split_features_target
+from src.features.feature_engineering import compute_features, fit_scalers, split_features_target
 from src.features.feature_store import upsert_features
 from src.models.baseline import (
     evaluate,
+    find_optimal_threshold,
     get_splits,
     train_logistic_regression,
     train_random_forest,
@@ -155,13 +155,14 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
         "Dataset: %d linhas, fraudes: %.2f%%", len(df_raw), df_raw["Class"].mean() * 100
     )
 
-    df, scalers = compute_features(df_raw)
-    upsert_features(df)
+    scalers = fit_scalers(df_raw)
+    scaler_path = Path("data/processed/scalers.json")
+    scaler_path.parent.mkdir(parents=True, exist_ok=True)
+    scaler_path.write_text(json.dumps(scalers.to_dict()))
+    logger.info("Scaler params salvos em %s", scaler_path)
 
-    scalers_path = Path("data/processed/scalers.pkl")
-    scalers_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(scalers, scalers_path)
-    logger.info("Scalers salvos em %s", scalers_path)
+    df = compute_features(df_raw, scalers=scalers)
+    upsert_features(df)
 
     X, y = split_features_target(df)
     X_train, X_test, y_train, y_test = get_splits(X, y, time_series=df_raw["Time"])
@@ -209,9 +210,12 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     # Random Forest — champion-challenger promotion
     rf_model = train_random_forest(X_train, y_train)
     y_proba = rf_model.predict_proba(X_test)[:, 1]
-    rf_metrics = evaluate(
-        y_test, pd.Series((y_proba >= 0.5).astype(int)), pd.Series(y_proba)
-    )
+    optimal_threshold, threshold_metrics = find_optimal_threshold(y_test, pd.Series(y_proba))
+    rf_metrics = evaluate(y_test, pd.Series((y_proba >= optimal_threshold).astype(int)), pd.Series(y_proba))
+    rf_tags = {
+        **_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
+        "fraud_threshold": str(round(optimal_threshold, 4)),
+    }
     _log_experiment(
         run_name="random_forest",
         model=rf_model,
@@ -221,14 +225,38 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
             "class_weight": "balanced",
             **split_metadata,
         },
-        metrics=rf_metrics,
-        tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
+        metrics={**rf_metrics, **threshold_metrics},
+        tags=rf_tags,
         log_model_fn=mlflow.sklearn.log_model,
         registered_model_name="fraud_detector_rf",
     )
-    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())[
-        "retraining"
-    ]["champion_min_delta_auc"]
+    logger.info(
+        "Threshold ótimo (F1): %.4f — precision=%.4f recall=%.4f f1=%.4f",
+        optimal_threshold,
+        threshold_metrics["precision_at_threshold"],
+        threshold_metrics["recall_at_threshold"],
+        threshold_metrics["f1_at_threshold"],
+    )
+
+    # Write threshold tag to the latest version and to @Production (may differ when promotion is skipped)
+    client = mlflow.MlflowClient()
+    versions = client.search_model_versions("name='fraud_detector_rf'")
+    if versions:
+        latest = max(versions, key=lambda v: int(v.version))
+        threshold_str = str(round(optimal_threshold, 4))
+        client.set_model_version_tag(latest.name, latest.version, "fraud_threshold", threshold_str)
+        try:
+            prod_mv = client.get_model_version_by_alias("fraud_detector_rf", "Production")
+            if prod_mv.version != latest.version:
+                client.set_model_version_tag(prod_mv.name, prod_mv.version, "fraud_threshold", threshold_str)
+                logger.info(
+                    "Tag 'fraud_threshold=%s' escrita em v%s (latest) e v%s (@Production)",
+                    threshold_str, latest.version, prod_mv.version,
+                )
+        except Exception:
+            pass
+
+    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())["retraining"]["champion_min_delta_auc"]
     _promote_if_better("fraud_detector_rf", rf_metrics["auc"], min_delta=min_delta)
 
     # PyTorch MLP (skipped if torch is not available)

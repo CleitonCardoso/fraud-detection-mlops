@@ -1,6 +1,7 @@
 """Feature engineering pipeline for credit card fraud detection."""
 
 import logging
+from dataclasses import asdict, dataclass
 
 import pandas as pd
 import pandera.pandas as pa
@@ -8,6 +9,30 @@ from pandera.pandas import Column, DataFrameSchema
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScalerParams:
+    """Mean and scale for Amount and Time, fitted on the full training set."""
+    amount_mean: float
+    amount_scale: float
+    time_mean: float
+    time_scale: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def fit_scalers(df: pd.DataFrame) -> ScalerParams:
+    """Fit StandardScalers on a DataFrame and return their parameters."""
+    sa = StandardScaler().fit(df[["Amount"]])
+    st = StandardScaler().fit(df[["Time"]])
+    return ScalerParams(
+        amount_mean=float(sa.mean_[0]),
+        amount_scale=float(sa.scale_[0]),
+        time_mean=float(st.mean_[0]),
+        time_scale=float(st.scale_[0]),
+    )
 
 FEATURE_SCHEMA = DataFrameSchema(
     {
@@ -21,30 +46,25 @@ FEATURE_SCHEMA = DataFrameSchema(
 )
 
 
-def compute_features(
-    df: pd.DataFrame, scalers: dict | None = None
-) -> tuple[pd.DataFrame, dict]:
+def compute_features(df: pd.DataFrame, scalers: ScalerParams | None = None) -> pd.DataFrame:
     """Transform raw transaction data into model-ready features.
 
     Args:
         df: Raw DataFrame with columns Time, Amount, V1-V28.
-        scalers: Optional dict {"amount": StandardScaler, "time": StandardScaler}
-            already fitted on training data. If None, new scalers are fitted
-            on `df` (training mode); otherwise existing scalers are used to
-            transform (inference mode).
+        scalers: Pre-fitted scaler params from training. When None (e.g. during
+                 training itself), scalers are fitted on the input batch.
 
     Returns:
-        Tuple (features DataFrame, scalers dict).
+        DataFrame with engineered features, validated against schema.
     """
     result = df.copy()
 
-    if scalers is None:
-        scaler_amount = StandardScaler().fit(result[["Amount"]])
-        scaler_time = StandardScaler().fit(result[["Time"]])
-        scalers = {"amount": scaler_amount, "time": scaler_time}
-
-    result["Amount_scaled"] = scalers["amount"].transform(result[["Amount"]])
-    result["Time_scaled"] = scalers["time"].transform(result[["Time"]])
+    if scalers is not None:
+        result["Amount_scaled"] = (result["Amount"] - scalers.amount_mean) / scalers.amount_scale
+        result["Time_scaled"] = (result["Time"] - scalers.time_mean) / scalers.time_scale
+    else:
+        result["Amount_scaled"] = StandardScaler().fit_transform(result[["Amount"]])
+        result["Time_scaled"] = StandardScaler().fit_transform(result[["Time"]])
     result["Hour"] = (result["Time"] / 3600 % 24).astype(float)
     result["Amount_log"] = (result["Amount"] + 1).transform("log")
 
@@ -57,7 +77,7 @@ def compute_features(
         len(result),
         result.shape[1],
     )
-    return result, scalers
+    return result
 
 
 def split_features_target(

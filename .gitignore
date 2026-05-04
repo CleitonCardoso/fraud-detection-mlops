@@ -23,6 +23,7 @@ data/processed/
 !data/raw/.gitignore
 !data/raw/*.dvc
 !data/processed/.gitignore
+!data/processed/*.dvc
 
 # MLflow (experimentos e artefatos locais)
 mlruns/
@@ -51,3 +52,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Private prep docs
+BANCA_QA.md
