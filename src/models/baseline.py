@@ -106,6 +106,6 @@ def get_splits(
         train_idx = order[:-n_test]
         test_idx = order[-n_test:]
         return X.loc[train_idx], X.loc[test_idx], y.loc[train_idx], y.loc[test_idx]
-    return train_test_split(
+    return train_test_split(  # type: ignore[no-any-return]
         X, y, test_size=test_size, random_state=random_state, stratify=y
-    )  # type: ignore[no-any-return]
+    )
