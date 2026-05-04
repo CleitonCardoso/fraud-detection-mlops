@@ -9,9 +9,13 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 import yaml
+import math
+
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.features.feature_engineering import compute_features
 from src.monitoring.metrics import (
@@ -22,6 +26,7 @@ from src.monitoring.metrics import (
     prediction_latency,
     request_counter,
 )
+from src.features.feature_engineering import ScalerParams
 from src.security.guardrails import InputGuardrail, OutputGuardrail
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -31,12 +36,27 @@ input_guard = InputGuardrail()
 output_guard = OutputGuardrail()
 
 _model = None
+_scalers: ScalerParams | None = None
 
 FRAUD_THRESHOLD = 0.5
+_SCALERS_PATH = "data/processed/scalers.json"
+
+
+def _load_scalers() -> None:
+    global _scalers
+    try:
+        import json
+        raw = json.loads(Path(_SCALERS_PATH).read_text())
+        _scalers = ScalerParams(**raw)
+        logger.info("Scaler params carregados de %s", _SCALERS_PATH)
+    except Exception as e:
+        logger.warning("Scaler params não disponíveis em %s: %s — Amount/Time serão z-scored por lote", _SCALERS_PATH, e)
+        _scalers = None
 
 
 def _load_model() -> None:
     global _model
+    _load_scalers()
     try:
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
         run = mlflow.search_runs(
@@ -81,41 +101,69 @@ app = FastAPI(
 app.mount("/metrics/", make_asgi_app())
 
 
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request, exc: RequestValidationError) -> JSONResponse:
+    # Starlette's default JSON encoder cannot serialize float nan/inf that may appear
+    # in the 'input' field of Pydantic error details. Replace them with None.
+    def _safe(v: object) -> object:
+        if isinstance(v, float) and not math.isfinite(v):
+            return None
+        if isinstance(v, bytes):
+            return v.decode("utf-8", errors="replace")
+        return v
+
+    errors = [dict(e, input=_safe(e.get("input"))) for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
+@app.exception_handler(Exception)
+async def _json_decode_error_handler(request, exc: Exception) -> JSONResponse:
+    import json as _json
+    if isinstance(exc, _json.JSONDecodeError):
+        return JSONResponse(status_code=422, content={"detail": "Request body must be valid JSON"})
+    logger.error("Unhandled exception: %s", exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 # ── Schemas ──────────────────────────────────────────────────────────────
 
 class TransactionRequest(BaseModel):
-    Time: float = Field(..., description="Seconds elapsed since first transaction")
-    Amount: float = Field(..., ge=0, description="Transaction amount in BRL")
-    V1: float = 0.0
-    V2: float = 0.0
-    V3: float = 0.0
-    V4: float = 0.0
-    V5: float = 0.0
-    V6: float = 0.0
-    V7: float = 0.0
-    V8: float = 0.0
-    V9: float = 0.0
-    V10: float = 0.0
-    V11: float = 0.0
-    V12: float = 0.0
-    V13: float = 0.0
-    V14: float = 0.0
-    V15: float = 0.0
-    V16: float = 0.0
-    V17: float = 0.0
-    V18: float = 0.0
-    V19: float = 0.0
-    V20: float = 0.0
-    V21: float = 0.0
-    V22: float = 0.0
-    V23: float = 0.0
-    V24: float = 0.0
-    V25: float = 0.0
-    V26: float = 0.0
-    V27: float = 0.0
-    V28: float = 0.0
+    model_config = ConfigDict(
+        extra="forbid",
+        # rejects float('nan') and float('inf') — prevents them reaching sklearn
+        json_schema_extra={"example": {"Time": 9800.0, "Amount": 850.0, "V14": -6.5}},
+    )
 
-    model_config = {"json_schema_extra": {"example": {"Time": 9800.0, "Amount": 850.0, "V14": -6.5}}}
+    Time: float = Field(..., ge=0, allow_inf_nan=False, description="Seconds elapsed since first transaction")
+    Amount: float = Field(..., ge=0, allow_inf_nan=False, description="Transaction amount in BRL")
+    V1: float = Field(default=0.0, allow_inf_nan=False)
+    V2: float = Field(default=0.0, allow_inf_nan=False)
+    V3: float = Field(default=0.0, allow_inf_nan=False)
+    V4: float = Field(default=0.0, allow_inf_nan=False)
+    V5: float = Field(default=0.0, allow_inf_nan=False)
+    V6: float = Field(default=0.0, allow_inf_nan=False)
+    V7: float = Field(default=0.0, allow_inf_nan=False)
+    V8: float = Field(default=0.0, allow_inf_nan=False)
+    V9: float = Field(default=0.0, allow_inf_nan=False)
+    V10: float = Field(default=0.0, allow_inf_nan=False)
+    V11: float = Field(default=0.0, allow_inf_nan=False)
+    V12: float = Field(default=0.0, allow_inf_nan=False)
+    V13: float = Field(default=0.0, allow_inf_nan=False)
+    V14: float = Field(default=0.0, allow_inf_nan=False)
+    V15: float = Field(default=0.0, allow_inf_nan=False)
+    V16: float = Field(default=0.0, allow_inf_nan=False)
+    V17: float = Field(default=0.0, allow_inf_nan=False)
+    V18: float = Field(default=0.0, allow_inf_nan=False)
+    V19: float = Field(default=0.0, allow_inf_nan=False)
+    V20: float = Field(default=0.0, allow_inf_nan=False)
+    V21: float = Field(default=0.0, allow_inf_nan=False)
+    V22: float = Field(default=0.0, allow_inf_nan=False)
+    V23: float = Field(default=0.0, allow_inf_nan=False)
+    V24: float = Field(default=0.0, allow_inf_nan=False)
+    V25: float = Field(default=0.0, allow_inf_nan=False)
+    V26: float = Field(default=0.0, allow_inf_nan=False)
+    V27: float = Field(default=0.0, allow_inf_nan=False)
+    V28: float = Field(default=0.0, allow_inf_nan=False)
 
 
 class PredictResponse(BaseModel):
@@ -151,11 +199,12 @@ def predict(request: TransactionRequest) -> PredictResponse:
         raise HTTPException(status_code=503, detail="Modelo não disponível. Execute make train.")
 
     try:
-        features = compute_features(pd.DataFrame([request.model_dump()])).drop(columns=["Class"], errors="ignore")
+        features = compute_features(pd.DataFrame([request.model_dump()]), scalers=_scalers).drop(columns=["Class"], errors="ignore")
         score = float(_model.predict_proba(features)[0][1])
     except Exception as e:
         request_counter.labels(endpoint="/predict", status="error").inc()
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.error("Prediction error: %s", e)
+        raise HTTPException(status_code=500, detail="Prediction failed — check server logs.") from e
 
     elapsed = time.perf_counter() - start
     prediction_latency.observe(elapsed)

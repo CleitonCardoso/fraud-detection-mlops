@@ -12,7 +12,7 @@ import mlflow.sklearn
 import pandas as pd
 import yaml
 
-from src.features.feature_engineering import compute_features, split_features_target
+from src.features.feature_engineering import compute_features, fit_scalers, split_features_target
 from src.features.feature_store import upsert_features
 from src.models.baseline import (
     evaluate,
@@ -138,7 +138,14 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     df_raw = pd.read_csv(data_path)
     logger.info("Dataset: %d linhas, fraudes: %.2f%%", len(df_raw), df_raw["Class"].mean() * 100)
 
-    df = compute_features(df_raw)
+    scalers = fit_scalers(df_raw)
+    scaler_path = Path("data/processed/scalers.json")
+    scaler_path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    scaler_path.write_text(json.dumps(scalers.to_dict()))
+    logger.info("Scaler params salvos em %s", scaler_path)
+
+    df = compute_features(df_raw, scalers=scalers)
     upsert_features(df)
 
     X, y = split_features_target(df)
