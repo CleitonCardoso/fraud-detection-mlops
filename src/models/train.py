@@ -1,4 +1,5 @@
 """Training pipeline with MLflow tracking and Model Registry."""
+
 import json
 import logging
 import os
@@ -214,8 +215,14 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     # Random Forest — champion-challenger promotion
     rf_model = train_random_forest(X_train, y_train)
     y_proba = rf_model.predict_proba(X_test)[:, 1]
-    optimal_threshold, threshold_metrics = find_optimal_threshold(y_test, pd.Series(y_proba))
-    rf_metrics = evaluate(y_test, pd.Series((y_proba >= optimal_threshold).astype(int)), pd.Series(y_proba))
+    optimal_threshold, threshold_metrics = find_optimal_threshold(
+        y_test, pd.Series(y_proba)
+    )
+    rf_metrics = evaluate(
+        y_test,
+        pd.Series((y_proba >= optimal_threshold).astype(int)),
+        pd.Series(y_proba),
+    )
     rf_tags = {
         **_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
         "fraud_threshold": str(round(optimal_threshold, 4)),
@@ -248,19 +255,29 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     if versions:
         latest = max(versions, key=lambda v: int(v.version))
         threshold_str = str(round(optimal_threshold, 4))
-        client.set_model_version_tag(latest.name, latest.version, "fraud_threshold", threshold_str)
+        client.set_model_version_tag(
+            latest.name, latest.version, "fraud_threshold", threshold_str
+        )
         try:
-            prod_mv = client.get_model_version_by_alias("fraud_detector_rf", "Production")
+            prod_mv = client.get_model_version_by_alias(
+                "fraud_detector_rf", "Production"
+            )
             if prod_mv.version != latest.version:
-                client.set_model_version_tag(prod_mv.name, prod_mv.version, "fraud_threshold", threshold_str)
+                client.set_model_version_tag(
+                    prod_mv.name, prod_mv.version, "fraud_threshold", threshold_str
+                )
                 logger.info(
                     "Tag 'fraud_threshold=%s' escrita em v%s (latest) e v%s (@Production)",
-                    threshold_str, latest.version, prod_mv.version,
+                    threshold_str,
+                    latest.version,
+                    prod_mv.version,
                 )
         except Exception:
             pass
 
-    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())["retraining"]["champion_min_delta_auc"]
+    min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())[
+        "retraining"
+    ]["champion_min_delta_auc"]
     _promote_if_better("fraud_detector_rf", rf_metrics["auc"], min_delta=min_delta)
 
     # PyTorch MLP (skipped if torch is not available)

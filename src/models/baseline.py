@@ -39,7 +39,9 @@ def evaluate(
     }
 
 
-def find_optimal_threshold(y_true: pd.Series, y_proba: pd.Series) -> tuple[float, dict[str, float]]:
+def find_optimal_threshold(
+    y_true: pd.Series, y_proba: pd.Series
+) -> tuple[float, dict[str, float]]:
     """Find the threshold that maximises F1 on the given split.
 
     Args:

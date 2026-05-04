@@ -53,8 +53,14 @@ def fraud_predictor(transaction_json: str) -> str:
 
     try:
         scalers_path = Path("data/processed/scalers.json")
-        scalers = ScalerParams(**_json_module.loads(scalers_path.read_text())) if scalers_path.exists() else None
-        features = compute_features(pd.DataFrame([transaction]), scalers=scalers).drop(columns=["Class"], errors="ignore")
+        scalers = (
+            ScalerParams(**_json_module.loads(scalers_path.read_text()))
+            if scalers_path.exists()
+            else None
+        )
+        features = compute_features(pd.DataFrame([transaction]), scalers=scalers).drop(
+            columns=["Class"], errors="ignore"
+        )
     except Exception as e:
         return json.dumps({"error": f"Erro no feature engineering: {e}"})
 
