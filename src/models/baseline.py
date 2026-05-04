@@ -1,10 +1,11 @@
 """Sklearn baseline models for fraud detection."""
 import logging
 
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, precision_recall_curve, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,29 @@ def evaluate(y_true: pd.Series, y_pred: pd.Series, y_proba: pd.Series) -> dict[s
         "precision": precision_score(y_true, y_pred, zero_division=0),
         "recall": recall_score(y_true, y_pred, zero_division=0),
         "f1": f1_score(y_true, y_pred, zero_division=0),
+    }
+
+
+def find_optimal_threshold(y_true: pd.Series, y_proba: pd.Series) -> tuple[float, dict[str, float]]:
+    """Find the threshold that maximises F1 on the given split.
+
+    Args:
+        y_true: Ground truth labels.
+        y_proba: Predicted probabilities for the positive class.
+
+    Returns:
+        Tuple of (optimal_threshold, metrics_at_threshold).
+    """
+    precisions, recalls, thresholds = precision_recall_curve(y_true, y_proba)
+    f1s = 2 * precisions * recalls / (precisions + recalls + 1e-9)
+    best_idx = int(np.argmax(f1s))
+    best_t = float(thresholds[min(best_idx, len(thresholds) - 1)])
+    y_pred = (y_proba >= best_t).astype(int)
+    return best_t, {
+        "threshold": best_t,
+        "precision_at_threshold": precision_score(y_true, y_pred, zero_division=0),
+        "recall_at_threshold": recall_score(y_true, y_pred, zero_division=0),
+        "f1_at_threshold": f1_score(y_true, y_pred, zero_division=0),
     }
 
 

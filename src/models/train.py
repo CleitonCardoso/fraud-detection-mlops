@@ -16,6 +16,7 @@ from src.features.feature_engineering import compute_features, fit_scalers, spli
 from src.features.feature_store import upsert_features
 from src.models.baseline import (
     evaluate,
+    find_optimal_threshold,
     get_splits,
     train_logistic_regression,
     train_random_forest,
@@ -171,16 +172,41 @@ def run_training(data_path: str = "data/raw/creditcard.csv") -> None:
     # Random Forest — champion-challenger promotion
     rf_model = train_random_forest(X_train, y_train)
     y_proba = rf_model.predict_proba(X_test)[:, 1]
-    rf_metrics = evaluate(y_test, pd.Series((y_proba >= 0.5).astype(int)), pd.Series(y_proba))
+    optimal_threshold, threshold_metrics = find_optimal_threshold(y_test, pd.Series(y_proba))
+    rf_metrics = evaluate(y_test, pd.Series((y_proba >= optimal_threshold).astype(int)), pd.Series(y_proba))
+    rf_tags = {
+        **_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
+        "fraud_threshold": str(round(optimal_threshold, 4)),
+    }
     _log_experiment(
         run_name="random_forest",
         model=rf_model,
         params={"model_type": "random_forest", "n_estimators": 100, "class_weight": "balanced"},
-        metrics=rf_metrics,
-        tags=_base_tags("fraud_detector_rf", dvc_hash, owner, git_sha),
+        metrics={**rf_metrics, **threshold_metrics},
+        tags=rf_tags,
         log_model_fn=mlflow.sklearn.log_model,
         registered_model_name="fraud_detector_rf",
     )
+    logger.info("Threshold ótimo (F1): %.4f — precision=%.4f recall=%.4f f1=%.4f",
+                optimal_threshold, threshold_metrics["precision_at_threshold"],
+                threshold_metrics["recall_at_threshold"], threshold_metrics["f1_at_threshold"])
+
+    # Write threshold tag to the latest version and to @Production (may differ when promotion is skipped)
+    client = mlflow.MlflowClient()
+    versions = client.search_model_versions("name='fraud_detector_rf'")
+    if versions:
+        latest = max(versions, key=lambda v: int(v.version))
+        threshold_str = str(round(optimal_threshold, 4))
+        client.set_model_version_tag(latest.name, latest.version, "fraud_threshold", threshold_str)
+        try:
+            prod_mv = client.get_model_version_by_alias("fraud_detector_rf", "Production")
+            if prod_mv.version != latest.version:
+                client.set_model_version_tag(prod_mv.name, prod_mv.version, "fraud_threshold", threshold_str)
+                logger.info("Tag 'fraud_threshold=%s' escrita em v%s (latest) e v%s (@Production)",
+                            threshold_str, latest.version, prod_mv.version)
+        except Exception:
+            pass
+
     min_delta = yaml.safe_load(Path("configs/monitoring_config.yaml").read_text())["retraining"]["champion_min_delta_auc"]
     _promote_if_better("fraud_detector_rf", rf_metrics["auc"], min_delta=min_delta)
 

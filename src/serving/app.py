@@ -37,13 +37,10 @@ output_guard = OutputGuardrail()
 
 _model = None
 _scalers: ScalerParams | None = None
+_threshold: float = 0.25  # overwritten at startup from MLflow model tag
 
-# Tuned from precision-recall analysis on test set (56 962 rows, 98 fraud).
-# 0.25 maximises F1 (0.8783) while keeping precision >= 0.91.
-# At 0.50 (old): 73/98 fraud caught, F1=0.8391.
-# At 0.25 (new): 83/98 fraud caught, F1=0.8783.
-FRAUD_THRESHOLD = 0.25
 _SCALERS_PATH = "data/processed/scalers.json"
+_DEFAULT_THRESHOLD = 0.25
 
 
 def _load_scalers() -> None:
@@ -56,6 +53,24 @@ def _load_scalers() -> None:
     except Exception as e:
         logger.warning("Scaler params não disponíveis em %s: %s — Amount/Time serão z-scored por lote", _SCALERS_PATH, e)
         _scalers = None
+
+
+def _load_threshold() -> None:
+    """Read fraud_threshold tag from the @Production model version in MLflow."""
+    global _threshold
+    try:
+        client = mlflow.MlflowClient()
+        mv = client.get_model_version_by_alias("fraud_detector_rf", "Production")
+        tag_value = mv.tags.get("fraud_threshold")
+        if tag_value is not None:
+            _threshold = float(tag_value)
+            logger.info("Threshold carregado do MLflow: %.4f (model v%s)", _threshold, mv.version)
+        else:
+            _threshold = _DEFAULT_THRESHOLD
+            logger.warning("Tag 'fraud_threshold' não encontrada no modelo — usando default %.4f", _DEFAULT_THRESHOLD)
+    except Exception as e:
+        _threshold = _DEFAULT_THRESHOLD
+        logger.warning("Não foi possível carregar threshold do MLflow: %s — usando default %.4f", e, _DEFAULT_THRESHOLD)
 
 
 def _load_model() -> None:
@@ -72,6 +87,7 @@ def _load_model() -> None:
         if not run.empty:  # type: ignore[union-attr]
             model_auc_gauge.set(run.iloc[0].get("metrics.auc", 0.0))  # type: ignore[union-attr]
         _model = mlflow.sklearn.load_model("models:/fraud_detector_rf@Production")
+        _load_threshold()
         logger.info("Modelo carregado do MLflow Registry")
     except Exception as e:
         logger.warning("Modelo não disponível no Registry: %s — usando fallback", e)
@@ -173,7 +189,7 @@ class TransactionRequest(BaseModel):
 class PredictResponse(BaseModel):
     fraud_score: float
     label: str
-    threshold: float = FRAUD_THRESHOLD
+    threshold: float
 
 
 class AgentRequest(BaseModel):
@@ -214,11 +230,13 @@ def predict(request: TransactionRequest) -> PredictResponse:
     prediction_latency.observe(elapsed)
     fraud_score.observe(score)
     request_counter.labels(endpoint="/predict", status="ok").inc()
-    logger.info("Predição: score=%.4f label=%s latency=%.3fs", score, "fraude" if score >= FRAUD_THRESHOLD else "legítima", elapsed)
+    label = "fraude" if score >= _threshold else "legítima"
+    logger.info("Predição: score=%.4f label=%s threshold=%.4f latency=%.3fs", score, label, _threshold, elapsed)
 
     return PredictResponse(
         fraud_score=round(score, 4),
-        label="fraude" if score >= FRAUD_THRESHOLD else "legítima",
+        label=label,
+        threshold=_threshold,
     )
 
 
