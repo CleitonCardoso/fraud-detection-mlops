@@ -1,0 +1,30 @@
+schema: '2.0'
+stages:
+  features:
+    cmd: python scripts/build_features.py
+    deps:
+    - path: data/raw/creditcard.csv
+      hash: md5
+      md5: e90efcb83d69faf99fcab8b0255024de
+      size: 150828752
+    - path: scripts/build_features.py
+      hash: md5
+      md5: daed56ac37c631372d9a8e7e2e65b9f6
+      size: 282
+    - path: src/features/feature_engineering.py
+      hash: md5
+      md5: 100167360cadefbd687e21c1436870ee
+      size: 2216
+    - path: src/features/feature_store.py
+      hash: md5
+      md5: 18f22fbbea83c748e2aaaf4a23fc4171
+      size: 1708
+    outs:
+    - path: data/processed/feature_store.parquet
+      hash: md5
+      md5: ad0532d55739743dfc542780effa6c76
+      size: 74886717
+    - path: data/processed/features.parquet
+      hash: md5
+      md5: ad0532d55739743dfc542780effa6c76
+      size: 74886717

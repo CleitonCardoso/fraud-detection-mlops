@@ -23,6 +23,7 @@ data/processed/
 !data/raw/.gitignore
 !data/raw/*.dvc
 !data/processed/.gitignore
+!data/processed/*.dvc
 
 # MLflow (experimentos e artefatos locais)
 mlruns/

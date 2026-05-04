@@ -1,7 +1,7 @@
 # ADR-005 — Feature Store: Local Parquet Without a Datalake
 
-**Status:** Accepted  
-**Date:** 2026-05-02
+**Status:** Superseded — see update below  
+**Date:** 2026-05-02 | **Updated:** 2026-05-03
 
 ## Context
 
@@ -33,10 +33,26 @@ We deliberately accept local Parquet without a remote datalake for the following
 - If the dataset were to receive new transactions in a real deployment, the correct next step would be: configure a DVC remote (S3/ADLS), track `feature_store.parquet` via `dvc add`, and push via `dvc push` after each training cycle.
 - This gap is acknowledged and can be explained to the banca as a deliberate scope decision, not an oversight.
 
+## Update (2026-05-03) — LocalStack S3 Remote Added
+
+The original gap (no remote storage) has been resolved by integrating **LocalStack** as an AWS S3 emulator. LocalStack runs as a Docker service (`datathon-localstack-1`, port 4566) and hosts the `fraud-detection-features` S3 bucket.
+
+DVC remote is now configured in `.dvc/config` to push/pull from `s3://fraud-detection-features` via LocalStack. Both pipeline outputs (`features.parquet`, `feature_store.parquet`) are versioned and stored remotely after `make data-push`.
+
+This closes the datalake gap: the feature store now survives outside the local filesystem and can be pulled on a fresh clone via `dvc pull` (with LocalStack running). The storage pattern is equivalent to a production S3/ADLS-backed DVC remote — only the endpoint URL differs.
+
+**Commands:**
+```bash
+docker compose up -d       # starts LocalStack
+make localstack-init       # creates fraud-detection-features bucket
+make data-push             # runs features pipeline + dvc push to S3
+dvc pull                   # restores artifacts on a fresh clone
+```
+
 ## Alternatives Considered
 
 | Alternative | Reason Rejected |
 |---|---|
-| DVC remote (S3/Google Drive) | Adds infra config with no measurable benefit for a static dataset |
+| DVC remote (real S3/Google Drive) | Requires external accounts/credentials; LocalStack provides identical behavior locally |
 | SQLite as feature store | More complex than Parquet, no benefit for batch-only workloads |
 | Databricks / Delta Lake | Out of scope for a local development datathon environment |

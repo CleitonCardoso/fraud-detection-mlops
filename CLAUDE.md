@@ -53,7 +53,8 @@ make train
 # Models → fraud_detector_rf → Aliases → adicionar "Production"
 
 # 7. Subir infraestrutura
-docker compose up -d   # Prometheus, Grafana, Langfuse
+docker compose up -d   # Prometheus, Grafana, Langfuse, LocalStack
+make localstack-init   # cria bucket S3 no LocalStack
 
 # 8. Iniciar API (com MLflow local)
 MLFLOW_TRACKING_URI=http://localhost:5000 PYTHONPATH=. \
@@ -107,6 +108,7 @@ docker compose up -d  # sobe todos os serviços
 | Grafana | http://localhost:3000 | admin / datathon |
 | Langfuse | http://localhost:3001 | — |
 | Ollama | http://localhost:11434 | — |
+| LocalStack (S3) | http://localhost:4566 | key=test / secret=test |
 
 ## Modelos em Produção
 

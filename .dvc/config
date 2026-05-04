@@ -1,0 +1,9 @@
+[core]
+    remote = localstack
+[remote "localstack"]
+    url = s3://fraud-detection-features
+    endpointurl = http://localhost:4566
+    region = us-east-1
+    access_key_id = test
+    secret_access_key = test
+
