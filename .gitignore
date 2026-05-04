@@ -51,3 +51,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Private prep docs
+BANCA_QA.md
