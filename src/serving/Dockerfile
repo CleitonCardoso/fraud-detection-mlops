@@ -3,7 +3,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir -e ".[ml,serving,agent,monitoring,security]"
+RUN pip install --no-cache-dir -e ".[ml,serving,agent,monitoring,security]" && \
+    pip install --no-cache-dir boto3 s3fs
 
 COPY src/ src/
 COPY configs/ configs/
