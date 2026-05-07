@@ -9,12 +9,26 @@ function defaultFeatures() {
   return features;
 }
 
-const INITIAL_FORM = {
-  Time: '9800',
-  Amount: '850',
-  ...defaultFeatures(),
-  V14: '-6.5', // override default — most important feature
+// Realistic fraud pattern: V14/V17/V12/V10 all negative simultaneously
+const PRESET_FRAUD = {
+  Time: '9800', Amount: '850',
+  V1: '-3.0', V2: '4.0', V3: '-4.0', V4: '2.0', V5: '-2.0', V6: '-1.0',
+  V7: '-4.0', V8: '0.5', V9: '-1.0', V10: '-4.0', V11: '2.0', V12: '-5.0',
+  V13: '-1.0', V14: '-8.0', V15: '0.0', V16: '-1.0', V17: '-6.0', V18: '-2.0',
+  V19: '0.5', V20: '0.3', V21: '0.8', V22: '0.5', V23: '-0.2', V24: '0.5',
+  V25: '-0.3', V26: '0.1', V27: '0.2', V28: '0.1',
 };
+
+const PRESET_LEGIT = {
+  Time: '50000', Amount: '25',
+  V1: '1.2', V2: '0.5', V3: '0.3', V4: '1.0', V5: '-0.2', V6: '-0.1',
+  V7: '0.4', V8: '0.1', V9: '0.3', V10: '0.5', V11: '0.8', V12: '0.2',
+  V13: '0.1', V14: '1.5', V15: '0.3', V16: '0.1', V17: '0.2', V18: '0.1',
+  V19: '0.0', V20: '0.1', V21: '0.0', V22: '0.1', V23: '0.0', V24: '0.1',
+  V25: '0.0', V26: '0.1', V27: '0.0', V28: '0.0',
+};
+
+const INITIAL_FORM = PRESET_FRAUD;
 
 const STARTER_QUERIES = [
   'Esta transação de R$850 às 3h da manhã com V14=-6.5 é suspeita?',
@@ -198,9 +212,25 @@ function DetectorTab() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20, color: '#1565c0' }}>
-        Analisar Transacao
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: '#1565c0' }}>Analisar Transação</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => { setForm(PRESET_FRAUD); setResult(null); }}
+            style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e53935', background: '#fff5f5', color: '#c62828', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+          >
+            Exemplo Fraude
+          </button>
+          <button
+            type="button"
+            onClick={() => { setForm(PRESET_LEGIT); setResult(null); }}
+            style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2e7d32', background: '#f1f8e9', color: '#2e7d32', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+          >
+            Exemplo Legítima
+          </button>
+        </div>
+      </div>
 
       {error && (
         <div
