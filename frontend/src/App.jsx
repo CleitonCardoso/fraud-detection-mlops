@@ -428,7 +428,7 @@ function SmallField({ name, value, onChange }) {
 // ─── Result Card ──────────────────────────────────────────────────────────────
 function ResultCard({ result }) {
   const { fraud_score, label, threshold } = result;
-  const isFraud = label === 1 || label === 'fraud' || label === true;
+  const isFraud = label === 1 || label === 'fraud' || label === 'fraude' || label === true;
   const scoreNum = parseFloat(fraud_score) || 0;
   const thresholdNum = parseFloat(threshold) || 0;
 
@@ -531,7 +531,7 @@ function ResultCard({ result }) {
 
 // ─── Agent Tab ────────────────────────────────────────────────────────────────
 function AgentTab() {
-  const [model, setModel] = useState('llama3.2:3b');
+  const [model, setModel] = useState('llama3.2:1b');
   const [messages, setMessages] = useState([]); // { role: 'user'|'agent', text, steps }
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -602,10 +602,15 @@ function AgentTab() {
               outline: 'none',
             }}
           >
-            <option value="llama3.2:3b">llama3.2:3b</option>
-            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="llama3.2:1b">llama3.2:1b (local)</option>
+            <option value="llama3.2:3b">llama3.2:3b (local, lento)</option>
+            <option value="gpt-4o-mini">gpt-4o-mini (OpenAI)</option>
           </select>
         </div>
+      </div>
+
+      <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#5d4037' }}>
+        Modelos locais (Ollama) rodam na CPU — resposta pode levar 1–5 minutos. Para latencia baixa, selecione <strong>gpt-4o-mini</strong> e configure <code>OPENAI_API_KEY</code> no <code>.env</code>.
       </div>
 
       {error && (

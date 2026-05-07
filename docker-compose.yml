@@ -14,7 +14,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     depends_on:
       - mlflow

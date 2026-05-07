@@ -86,8 +86,13 @@ def load_index() -> FAISS:
     return build_index()
 
 
+_INDEX_CACHE: FAISS | None = None
+
+
 def retrieve(query: str, k: int = 3) -> list[str]:
     """Retrieve top-k relevant chunks for a query."""
-    store = load_index()
-    docs = store.similarity_search(query, k=k)
+    global _INDEX_CACHE
+    if _INDEX_CACHE is None:
+        _INDEX_CACHE = load_index()
+    docs = _INDEX_CACHE.similarity_search(query, k=k)
     return [doc.page_content for doc in docs]

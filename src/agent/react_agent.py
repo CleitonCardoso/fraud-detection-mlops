@@ -63,6 +63,9 @@ def _langfuse_handler():
         return None
 
 
+_AGENT_CACHE: dict = {}
+
+
 def build_agent(model_name: str = "gpt-4o-mini", temperature: float = 0.0):
     """Build the ReAct agent graph."""
     llm = _get_llm(model_name, temperature)
@@ -71,7 +74,9 @@ def build_agent(model_name: str = "gpt-4o-mini", temperature: float = 0.0):
 
 def query(question: str, model_name: str = "gpt-4o-mini") -> dict:
     """Run a question through the fraud detection agent."""
-    agent = build_agent(model_name=model_name)
+    if model_name not in _AGENT_CACHE:
+        _AGENT_CACHE[model_name] = build_agent(model_name=model_name)
+    agent = _AGENT_CACHE[model_name]
 
     callbacks = []
     handler = _langfuse_handler()
