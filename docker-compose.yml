@@ -20,6 +20,15 @@ services:
       - ./data:/app/data
       - ./mlruns:/app/mlruns
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:80"
+    depends_on:
+      - api
+
   train:
     build:
       context: .
