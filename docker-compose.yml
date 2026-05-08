@@ -8,20 +8,73 @@ services:
     env_file: .env
     environment:
       - FRAUD_API_KEY=${FRAUD_API_KEY:-}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     depends_on:
       - mlflow
+      - localstack
     volumes:
       - ./data:/app/data
       - ./mlruns:/app/mlruns
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:80"
+    depends_on:
+      - api
+
+  train:
+    build:
+      context: .
+      dockerfile: src/serving/Dockerfile
+    command: python -m src.models.train
+    env_file: .env
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    depends_on:
+      - mlflow
+      - localstack
+    volumes:
+      - ./data:/app/data
+      - ./mlruns:/app/mlruns
+    profiles:
+      - train
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.11.1
     ports:
       - "5000:5000"
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow_data/mlflow.db --default-artifact-root /mlartifacts
+    command: >
+      bash -c "pip install boto3 -q &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow_data/mlflow.db
+      --default-artifact-root s3://mlflow-artifacts/
+      --allowed-hosts '*'"
+    environment:
+      - MLFLOW_S3_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    depends_on:
+      localstack:
+        condition: service_healthy
     volumes:
       - mlflow_db:/mlflow_data
-      - mlflow_artifacts:/mlartifacts
 
   prometheus:
     image: prom/prometheus:v2.51.0
@@ -87,7 +140,6 @@ services:
 
 volumes:
   mlflow_db:
-  mlflow_artifacts:
   grafana_data:
   langfuse_db_data:
   localstack_data:
